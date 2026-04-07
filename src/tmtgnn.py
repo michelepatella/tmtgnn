@@ -1,4 +1,7 @@
-from src.layer import *
+from graph.graph_learner import GraphLearner
+from models.layer import *
+from normalization.layer_norm import LayerNorm
+from spatial.graph_diffusion import GraphDiffusion
 
 
 class gtnet(nn.Module):
@@ -43,7 +46,7 @@ class gtnet(nn.Module):
         self.start_conv = nn.Conv2d(
             in_channels=in_dim, out_channels=residual_channels, kernel_size=(1, 1)
         )
-        self.gc = graph_constructor(
+        self.gc = GraphLearner(
             num_nodes,
             subgraph_size,
             node_dim,
@@ -123,7 +126,7 @@ class gtnet(nn.Module):
 
                 if self.gcn_true:
                     self.gconv1.append(
-                        mixprop(
+                        GraphDiffusion(
                             conv_channels,
                             residual_channels,
                             gcn_depth,
@@ -132,7 +135,7 @@ class gtnet(nn.Module):
                         )
                     )
                     self.gconv2.append(
-                        mixprop(
+                        GraphDiffusion(
                             conv_channels,
                             residual_channels,
                             gcn_depth,
