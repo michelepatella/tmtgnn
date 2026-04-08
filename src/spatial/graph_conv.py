@@ -22,7 +22,7 @@ class GraphConv(nn.Module):
         - The adjacency matrix is expected to be predefined and fixed
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize GraphConv layer.
 
         This layer does not contain learnable parameters and

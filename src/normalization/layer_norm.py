@@ -76,8 +76,8 @@ class LayerNorm(nn.Module):
                     - l: sequence length
 
             idx (torch.Tensor):
-                Node index tensor used to select node-specific
-                affine parameters for normalization.
+                Node index tensor of shape (v,), used to select
+                node-specific affine parameters for normalization.
 
         Returns:
             torch.Tensor:
