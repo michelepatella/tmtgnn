@@ -1,4 +1,4 @@
-"""src/spatial/graph_conv.py
+"""src/modules/spatial/graph_conv.py
 
 Graph convolution layer.
 

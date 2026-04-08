@@ -1,4 +1,4 @@
-"""src/utils/channel_projection.py
+"""src/layers/projection/channel_projection.py
 
 Channel projection layer.
 

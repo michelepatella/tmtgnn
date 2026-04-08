@@ -1,4 +1,4 @@
-"""src/normalization/layer_norm.py
+"""src/layers/normalization/layer_norm.py
 
 Node-aware layer normalization module.
 
