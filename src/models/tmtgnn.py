@@ -1,10 +1,10 @@
 from graph.graph_learner import GraphLearner
 from models.layer import *
-from normalization.layer_norm import LayerNorm
-from spatial.graph_diffusion import GraphDiffusion
+from layers.normalization.layer_norm import LayerNorm
+from modules.spatial.graph_diffusion import GraphDiffusion
 
 
-class gtnet(nn.Module):
+class TMTGNN(nn.Module):
     def __init__(
         self,
         gcn_true,
@@ -30,7 +30,7 @@ class gtnet(nn.Module):
         tanhalpha=3,
         layer_norm_affline=True,
     ):
-        super(gtnet, self).__init__()
+        super(TMTGNN, self).__init__()
         self.gcn_true = gcn_true
         self.buildA_true = buildA_true
         self.num_nodes = num_nodes
