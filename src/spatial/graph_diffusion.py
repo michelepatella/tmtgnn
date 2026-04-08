@@ -62,9 +62,9 @@ class GraphDiffusion(nn.Module):
         """Compute graph diffusion.
 
         Performs iterative message passing over a graph with residual
-        mixing of the original input features. The hidden states from 
+        mixing of the original input features. The hidden states from
         each diffusion step are concatenated and projected to the output space.
-        
+
         Args:
             x (torch.Tensor):
                 Input feature map of shape (n, c, v, l), where:
