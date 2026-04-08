@@ -4,7 +4,7 @@ Transformer module.
 
 Provides the `Transformer` class, which replaces classical
 temporal convolution in spatio-temporal graph neural networks
-with a Transformer-based temporal modeling block. The module 
+with a Transformer-based temporal modeling block. The module
 applies self-attention over the temporal dimension for each node
 independently, enabling long-range temporal dependency modeling without
 explicit convolutional inductive bias.
@@ -18,8 +18,8 @@ class Transformer(nn.Module):
     """Transformer module.
 
     Applies a Transformer encoder over the temporal dimension of each node
-    independently. The module replaces classical temporal convolution in 
-    spatio-temporal graph neural networks. The input is first reshaped so 
+    independently. The module replaces classical temporal convolution in
+    spatio-temporal graph neural networks. The input is first reshaped so
     that each node is treated as an independent sequence over time. A shared
     Transformer is then applied across all nodes.
 
@@ -34,7 +34,7 @@ class Transformer(nn.Module):
         out_channels: int,
         num_head: int = 4,
         num_layers: int = 2,
-        dropout: float = 0.1,
+        dropout: float = 0.3,
     ) -> None:
         """Initialize Transformer.
 
@@ -51,14 +51,14 @@ class Transformer(nn.Module):
                 Default is 2.
             dropout (float):
                 Dropout rate used inside Transformer layers.
-                Default is 0.1.
+                Default is 0.3.
         """
         super().__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.input_projection = (
+        self.projection = (
             nn.Linear(in_channels, out_channels)
             if in_channels != out_channels
             else nn.Identity()
@@ -100,12 +100,12 @@ class Transformer(nn.Module):
                     - v: number of nodes (same as input)
                     - l: sequence length (same as input)
         """
-        n, c, v, l = x.shapeintendo
+        n, c, v, l = x.shape
 
         x = x.permute(0, 2, 3, 1).contiguous()
         x = x.view(n * v, l, c)
 
-        x = self.input_projection(x)
+        x = self.projection(x)
         x = self.transformer(x)
 
         x = x.view(n, v, l, self.out_channels)

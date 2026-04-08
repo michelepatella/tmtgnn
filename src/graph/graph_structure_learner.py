@@ -46,7 +46,7 @@ class GraphStructureLearner(nn.Module):
             alpha (float):
                 Scaling factor for non-linearity sharpness. Default is 3.0.
             noise_scale (float):
-                Scale of random noise added to adjacency scores for stability. 
+                Scale of random noise added to adjacency scores for stability.
                 Default is 0.01.
             node_features (torch.Tensor | None):
                 Precomputed node features of shape (num_nodes, feature_dim).
@@ -81,16 +81,16 @@ class GraphStructureLearner(nn.Module):
         parameterized separately to enable directed edge modeling.
 
         Args:
-            idx (torch.Tensor): 
+            idx (torch.Tensor):
                 Node index tensor of shape (n,), where n is the number
                 of selected nodes used to build the local graph structure.
 
         Returns:
             tuple[torch.Tensor, torch.Tensor]:
                 Tuple containing:
-                    - node_src (torch.Tensor): 
+                    - node_src (torch.Tensor):
                         Source node representations of shape (n, hidden_dim)
-                    - node_dst (torch.Tensor): 
+                    - node_dst (torch.Tensor):
                         Destination node representations of shape (n, hidden_dim)
         """
         if self.node_features is None:

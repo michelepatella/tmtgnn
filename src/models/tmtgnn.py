@@ -1,263 +1,271 @@
-from graph.graph_learner import GraphLearner
-from models.layer import *
-from layers.normalization.layer_norm import LayerNorm
+"""src/models/tmtgnn.py
+
+T-MTGNN model.
+
+Provides the `TMTGNN` class, which implements a spatio-temporal graph
+neural network combining Transformer-based temporal modeling with
+graph diffusion layers and an adaptive graph structure learner.
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from graph.graph_structure_learner import GraphStructureLearner
+from modules.temporal.transformer import Transformer
 from modules.spatial.graph_diffusion import GraphDiffusion
+from layers.normalization.layer_norm import LayerNorm
 
 
 class TMTGNN(nn.Module):
+    """T-MTGNN model.
+
+    Spatio-temporal graph neural network that combines Transformer-based
+    temporal modeling with graph diffusion layers and an adaptive graph
+    structure learner, enabling joint temporal and spatial dependency
+    modeling over graph-structured data.
+
+    Notes:
+        - Temporal dependencies are modeled via Transformer encoder blocks
+        - Spatial dependencies are modeled via graph diffusion operators
+        - Graph structure is dynamically inferred at each forward pass
+    """
+
     def __init__(
         self,
-        gcn_true,
-        buildA_true,
-        gcn_depth,
-        num_nodes,
-        device,
-        predefined_A=None,
-        static_feat=None,
-        dropout=0.3,
-        subgraph_size=20,
-        node_dim=40,
-        dilation_exponential=1,
-        conv_channels=32,
-        residual_channels=32,
-        skip_channels=64,
-        end_channels=128,
-        seq_length=12,
-        in_dim=2,
-        out_dim=12,
-        layers=3,
-        propalpha=0.05,
-        tanhalpha=3,
-        layer_norm_affline=True,
-    ):
-        super(TMTGNN, self).__init__()
-        self.gcn_true = gcn_true
-        self.buildA_true = buildA_true
+        num_nodes: int,
+        in_channels: int,
+        seq_length: int,
+        out_channels: int,
+        device: torch.device,
+        subgraph_size: int = 20,
+        node_dim: int = 40,
+        hidden_dim: int = 32,
+        skip_dim: int = 64,
+        head_dim: int = 128,
+        num_layers: int = 3,
+        gcn_depth: int = 2,
+        residual_alpha: float = 0.05,
+        dropout: float = 0.3,
+        graph_alpha: float = 3.0,
+        layer_norm_affine: bool = True,
+        graph_noise_scale: float = 0.01,
+        node_features: torch.Tensor | None = None,
+        num_heads: int = 4,
+        transformer_layers: int = 2,
+        layer_norm_eps: float = 1e-5,
+        projection_bias: bool = True,
+    ) -> None:
+        """Initialize TMTGNN.
+
+        Args:
+            num_nodes (int):
+                Number of nodes in the graph.
+            in_channels (int):
+                Number of input channels.
+            seq_length (int):
+                Input sequence length.
+            out_channels (int):
+                Number of output channels.
+            device (torch.device):
+                Computation device.
+            subgraph_size (int):
+                Number of outgoing edges per node in learned graph.
+                Default is 20.
+            node_dim (int):
+                Node embedding dimension used in graph learning.
+                Default is 40.
+            hidden_dim (int):
+                Hidden feature dimension.
+                Default is 32.
+            skip_dim (int):
+                Skip connection feature dimension.
+                Default is 64.
+            head_dim (int):
+                Head dimension before output projection.
+                Default is 128.
+            num_layers (int):
+                Number of spatio-temporal blocks.
+                Default is 3.
+            gcn_depth (int):
+                Number of diffusion steps in graph diffusion layers.
+                Default is 2.
+            residual_alpha (float):
+                Residual propagation coefficient.
+                Default is 0.05.
+            dropout (float):
+                Dropout rate.
+                Default is 0.3.
+            graph_alpha (float):
+                Scaling factor for graph learning non-linearity.
+                Default is 3.0.
+            layer_norm_affine (bool):
+                Whether LayerNorm uses learnable affine parameters.
+                Default is True.
+            graph_noise_scale (float):
+                Noise scale used during adjacency construction.
+                Default is 0.01.
+            node_features (torch.Tensor | None):
+                External node feature matrix used to condition graph construction.
+                Default is None.
+            num_heads (int):
+                Number of attention heads used in Transformer layers.
+                Default is 4.
+            transformer_layers (int):
+                Number of internal layers inside each Transformer block.
+                Default is 2.
+            layer_norm_eps (float):
+                Numerical stability epsilon used in the normalization layer.
+                Default is 1e-5.
+            projection_bias (bool):
+                Whether the projection layers inside graph diffusion use bias terms.
+                Default is True.
+        """
+        super().__init__()
+
         self.num_nodes = num_nodes
-        self.dropout = dropout
-        self.predefined_A = predefined_A
-        self.filter_convs = nn.ModuleList()
-        self.gate_convs = nn.ModuleList()
-        self.residual_convs = nn.ModuleList()
-        self.skip_convs = nn.ModuleList()
-        self.gconv1 = nn.ModuleList()
-        self.gconv2 = nn.ModuleList()
-        self.norm = nn.ModuleList()
-        self.start_conv = nn.Conv2d(
-            in_channels=in_dim, out_channels=residual_channels, kernel_size=(1, 1)
-        )
-        self.gc = GraphLearner(
-            num_nodes,
-            subgraph_size,
-            node_dim,
-            device,
-            alpha=tanhalpha,
-            static_feat=static_feat,
-        )
-
         self.seq_length = seq_length
-        kernel_size = 7
-        if dilation_exponential > 1:
-            self.receptive_field = int(
-                1
-                + (kernel_size - 1)
-                * (dilation_exponential**layers - 1)
-                / (dilation_exponential - 1)
-            )
-        else:
-            self.receptive_field = layers * (kernel_size - 1) + 1
+        self.num_layers = num_layers
+        self.dropout = dropout
 
-        for i in range(1):
-            if dilation_exponential > 1:
-                rf_size_i = int(
-                    1
-                    + i
-                    * (kernel_size - 1)
-                    * (dilation_exponential**layers - 1)
-                    / (dilation_exponential - 1)
-                )
-            else:
-                rf_size_i = i * layers * (kernel_size - 1) + 1
-            new_dilation = 1
-            for j in range(1, layers + 1):
-                if dilation_exponential > 1:
-                    rf_size_j = int(
-                        rf_size_i
-                        + (kernel_size - 1)
-                        * (dilation_exponential**j - 1)
-                        / (dilation_exponential - 1)
-                    )
-                else:
-                    rf_size_j = rf_size_i + j * (kernel_size - 1)
-
-                self.filter_convs.append(
-                    dilated_inception(
-                        residual_channels, conv_channels, dilation_factor=new_dilation
-                    )
-                )
-                self.gate_convs.append(
-                    dilated_inception(
-                        residual_channels, conv_channels, dilation_factor=new_dilation
-                    )
-                )
-                self.residual_convs.append(
-                    nn.Conv2d(
-                        in_channels=conv_channels,
-                        out_channels=residual_channels,
-                        kernel_size=(1, 1),
-                    )
-                )
-                if self.seq_length > self.receptive_field:
-                    self.skip_convs.append(
-                        nn.Conv2d(
-                            in_channels=conv_channels,
-                            out_channels=skip_channels,
-                            kernel_size=(1, self.seq_length - rf_size_j + 1),
-                        )
-                    )
-                else:
-                    self.skip_convs.append(
-                        nn.Conv2d(
-                            in_channels=conv_channels,
-                            out_channels=skip_channels,
-                            kernel_size=(1, self.receptive_field - rf_size_j + 1),
-                        )
-                    )
-
-                if self.gcn_true:
-                    self.gconv1.append(
-                        GraphDiffusion(
-                            conv_channels,
-                            residual_channels,
-                            gcn_depth,
-                            dropout,
-                            propalpha,
-                        )
-                    )
-                    self.gconv2.append(
-                        GraphDiffusion(
-                            conv_channels,
-                            residual_channels,
-                            gcn_depth,
-                            dropout,
-                            propalpha,
-                        )
-                    )
-
-                if self.seq_length > self.receptive_field:
-                    self.norm.append(
-                        LayerNorm(
-                            (
-                                residual_channels,
-                                num_nodes,
-                                self.seq_length - rf_size_j + 1,
-                            ),
-                            elementwise_affine=layer_norm_affline,
-                        )
-                    )
-                else:
-                    self.norm.append(
-                        LayerNorm(
-                            (
-                                residual_channels,
-                                num_nodes,
-                                self.receptive_field - rf_size_j + 1,
-                            ),
-                            elementwise_affine=layer_norm_affline,
-                        )
-                    )
-
-                new_dilation *= dilation_exponential
-
-        self.layers = layers
-        self.end_conv_1 = nn.Conv2d(
-            in_channels=skip_channels,
-            out_channels=end_channels,
-            kernel_size=(1, 1),
-            bias=True,
+        # =========================================================
+        # Graph Structure Learning
+        # =========================================================
+        self.graph_learner = GraphStructureLearner(
+            num_nodes=num_nodes,
+            top_k=subgraph_size,
+            hidden_dim=node_dim,
+            alpha=graph_alpha,
+            noise_scale=graph_noise_scale,
+            node_features=node_features,
         )
-        self.end_conv_2 = nn.Conv2d(
-            in_channels=end_channels,
-            out_channels=out_dim,
+
+        # =========================================================
+        # Input Projection
+        # =========================================================
+        self.input_projection = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=hidden_dim,
             kernel_size=(1, 1),
-            bias=True,
         )
-        if self.seq_length > self.receptive_field:
-            self.skip0 = nn.Conv2d(
-                in_channels=in_dim,
-                out_channels=skip_channels,
-                kernel_size=(1, self.seq_length),
-                bias=True,
+
+        # =========================================================
+        # Spatio-Temporal Blocks
+        # =========================================================
+        self.temporal_layers = nn.ModuleList()
+        self.diffusion_forward = nn.ModuleList()
+        self.diffusion_backward = nn.ModuleList()
+        self.skip_projections = nn.ModuleList()
+        self.normalization_layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.temporal_layers.append(
+                Transformer(
+                    in_channels=hidden_dim,
+                    out_channels=hidden_dim,
+                    num_head=num_heads,
+                    num_layers=transformer_layers,
+                    dropout=dropout,
+                )
             )
-            self.skipE = nn.Conv2d(
-                in_channels=residual_channels,
-                out_channels=skip_channels,
-                kernel_size=(1, self.seq_length - self.receptive_field + 1),
-                bias=True,
+            self.diffusion_forward.append(
+                GraphDiffusion(
+                    in_channels=hidden_dim,
+                    out_channels=hidden_dim,
+                    diffusion_steps=gcn_depth,
+                    residual_alpha=residual_alpha,
+                    projection_bias=projection_bias,
+                )
+            )
+            self.diffusion_backward.append(
+                GraphDiffusion(
+                    in_channels=hidden_dim,
+                    out_channels=hidden_dim,
+                    diffusion_steps=gcn_depth,
+                    residual_alpha=residual_alpha,
+                    projection_bias=projection_bias,
+                )
+            )
+            self.skip_projections.append(
+                nn.Conv2d(
+                    in_channels=hidden_dim,
+                    out_channels=skip_dim,
+                    kernel_size=(1, seq_length),
+                )
+            )
+            self.normalization_layers.append(
+                LayerNorm(
+                    (hidden_dim, num_nodes, seq_length),
+                    eps=layer_norm_eps,
+                    elementwise_affine=layer_norm_affine,
+                )
             )
 
-        else:
-            self.skip0 = nn.Conv2d(
-                in_channels=in_dim,
-                out_channels=skip_channels,
-                kernel_size=(1, self.receptive_field),
-                bias=True,
-            )
-            self.skipE = nn.Conv2d(
-                in_channels=residual_channels,
-                out_channels=skip_channels,
-                kernel_size=(1, 1),
-                bias=True,
-            )
-
+        # =========================================================
+        # Output Head
+        # =========================================================
+        self.head_1 = nn.Conv2d(
+            in_channels=skip_dim,
+            out_channels=head_dim,
+            kernel_size=(1, 1),
+        )
+        self.head_2 = nn.Conv2d(
+            in_channels=head_dim,
+            out_channels=out_channels,
+            kernel_size=(1, 1),
+        )
         self.idx = torch.arange(self.num_nodes).to(device)
 
-    def forward(self, input, idx=None):
-        seq_len = input.size(3)
-        assert seq_len == self.seq_length, (
-            "input sequence length not equal to preset sequence length"
-        )
+    def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
+        """Compute forward pass of TMTGNN.
 
-        if self.seq_length < self.receptive_field:
-            input = nn.functional.pad(
-                input, (self.receptive_field - self.seq_length, 0, 0, 0)
-            )
+        Performs spatio-temporal modeling in the following pipeline:
+        (1) Learns a dynamic graph from node embeddings
+        (2) Applies temporal attention via Transformer layers
+        (3) Performs bidirectional graph diffusion for spatial propagation
+        (4) Aggregates multi-layer skip connections
+        (5) Produces final predictions via output projection
 
-        if self.gcn_true:
-            if self.buildA_true:
-                if idx is None:
-                    adp = self.gc(self.idx)
-                else:
-                    adp = self.gc(idx)
-            else:
-                adp = self.predefined_A
+        Args:
+            x (torch.Tensor):
+                Input tensor of shape (n, c, v, l), where:
+                    - n: batch size
+                    - c: input channels
+                    - v: number of nodes
+                    - l: sequence length
+            idx (torch.Tensor | None):
+                Node index tensor of shape (v,) where v is the number of nodes,
+                used for graph construction. Default is None.
 
-        x = self.start_conv(input)
-        skip = self.skip0(F.dropout(input, self.dropout, training=self.training))
-        for i in range(self.layers):
+        Returns:
+            torch.Tensor:
+                Output tensor of shape (n, c_out, v, l), where:
+                    - n: batch size
+                    - c_out: output channels
+                    - v: number of nodes
+                    - l: sequence length
+        """
+        node_idx = idx if idx is not None else self.idx
+        adj = self.graph_learner(node_idx)
+
+        x = self.input_projection(x)
+        skip = 0
+
+        for i in range(self.num_layers):
             residual = x
-            filter = self.filter_convs[i](x)
-            filter = torch.tanh(filter)
-            gate = self.gate_convs[i](x)
-            gate = torch.sigmoid(gate)
-            x = filter * gate
+
+            x = self.temporal_layers[i](x)
+
+            x = self.diffusion_forward[i](x, adj) + self.diffusion_backward[i](
+                x, adj.t()
+            )
             x = F.dropout(x, self.dropout, training=self.training)
-            s = x
-            s = self.skip_convs[i](s)
-            skip = s + skip
-            if self.gcn_true:
-                x = self.gconv1[i](x, adp) + self.gconv2[i](x, adp.transpose(1, 0))
-            else:
-                x = self.residual_convs[i](x)
 
-            x = x + residual[:, :, :, -x.size(3) :]
-            if idx is None:
-                x = self.norm[i](x, self.idx)
-            else:
-                x = self.norm[i](x, idx)
+            skip += self.skip_projections[i](x)
 
-        skip = self.skipE(x) + skip
+            x = x + residual
+            x = self.normalization_layers[i](x, node_idx)
+
         x = F.relu(skip)
-        x = F.relu(self.end_conv_1(x))
-        x = self.end_conv_2(x)
+        x = F.relu(self.head_1(x))
+        x = self.head_2(x)
+
         return x
