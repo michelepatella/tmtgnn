@@ -22,7 +22,7 @@ class ChannelProjection(nn.Module):
         - It operates independently on each node and time step
     """
 
-    def __init__(self, in_channels: int, out_channels: int, bias: bool) -> None:
+    def __init__(self, in_channels: int, out_channels: int, bias: bool = True) -> None:
         """Initialize ChannelProjection layer.
 
         Args:
@@ -31,7 +31,7 @@ class ChannelProjection(nn.Module):
             out_channels (int):
                 Number of output feature channels.
             bias (bool):
-                Whether to include a learnable bias term.
+                Whether to include a learnable bias term. Default is True.
         """
         super().__init__()
 

@@ -1,4 +1,4 @@
-"""src/models/spatial/graph_diffusion.py
+"""src/spatial/graph_diffusion.py
 
 Graph diffusion layer.
 
