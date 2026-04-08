@@ -30,7 +30,7 @@ class GraphConv(nn.Module):
         """
         super().__init__()
 
-    def forward(self, x: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
         """Compute graph convolution.
 
         Performs message passing over a static graph using a fixed
@@ -41,9 +41,10 @@ class GraphConv(nn.Module):
                 Input feature map of shape (n, c, v, l), where:
                     - n: batch size
                     - c: number of channels
-                    - v: number of nodes
+                    - v: number of source nodes
                     - l: sequence length
-            A (torch.Tensor):
+
+            adj (torch.Tensor):
                 Adjacency matrix of shape (v, w), representing
                 fixed graph connectivity, where:
                     - v: number of source nodes
@@ -52,7 +53,10 @@ class GraphConv(nn.Module):
         Returns:
             torch.Tensor:
                 Output feature map of shape (n, c, w, l), where:
-                    - w: number of output nodes
+                    - n: batch size (same as input)
+                    - c: number of channels (same as input)
+                    - w: number of target nodes
+                    - l: sequence length (same as input)
         """
-        x = torch.einsum("ncvl,vw->ncwl", (x, A))
+        x = torch.einsum("ncvl,vw->ncwl", (x, adj))
         return x.contiguous()
