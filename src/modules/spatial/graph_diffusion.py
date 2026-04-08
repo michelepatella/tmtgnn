@@ -11,8 +11,7 @@ steps and projects them into a target feature space.
 import torch
 import torch.nn as nn
 from modules.spatial.graph_conv import GraphConv
-from utils.channel_projection import ChannelProjection
-
+from layers.projection import ChannelProjection
 
 class GraphDiffusion(nn.Module):
     """Graph diffusion layer.
