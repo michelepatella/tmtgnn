@@ -250,11 +250,9 @@ class TMTGNN(nn.Module):
 
         Returns:
             torch.Tensor:
-                Output tensor of shape (b, c_out, v, l), where:
-                    - b: batch size
-                    - c_out: output channels
-                    - v: number of nodes
-                    - l: sequence length
+                Output tensor containing the prediction at the last time step:
+                    - (b, c_out, v) if out_channels > 1
+                    - (b, v) if out_channels == 1
         """                
         node_idx = idx if idx is not None else self.idx
 
@@ -269,7 +267,7 @@ class TMTGNN(nn.Module):
         node_repr = h + emb
 
         if self.node_feat_proj is not None:
-            feat = self.graph_learner.node_features
+            feat = self.graph_learner.node_features[node_idx]
             feat = self.node_feat_proj(feat)
             feat = feat.unsqueeze(0).expand(h.size(0), -1, -1)
             node_repr = node_repr + feat
