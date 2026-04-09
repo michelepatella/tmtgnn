@@ -1,263 +1,273 @@
-from graph.graph_learner import GraphLearner
-from models.layer import *
-from layers.normalization.layer_norm import LayerNorm
-from modules.spatial.graph_diffusion import GraphDiffusion
+"""src/models/tmtgnn.py
+
+T-MTGNN model.
+
+Provides the `TMTGNN` class, which implements a spatio-temporal graph
+neural network combining Transformer-based temporal modeling with
+graph diffusion layers and an adaptive graph structure learner.
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import copy
+from graph import GraphStructureLearner
+from modules import Transformer
+from modules import GraphDiffusion
+from layers import LayerNorm
+from config import DiffusionConfig
+from config import GraphConfig
+from config import NormConfig
+from config import TMTGNNConfig
+from config import TransformerConfig
 
 
 class TMTGNN(nn.Module):
+    """T-MTGNN model.
+
+    Spatio-temporal graph neural network that combines Transformer-based
+    temporal modeling with graph diffusion layers and an adaptive graph
+    structure learner, enabling joint temporal and spatial dependency
+    modeling over graph-structured data.
+
+    Notes:
+        - Temporal dependencies are modeled via Transformer encoder blocks
+        - Spatial dependencies are modeled via graph diffusion operators
+        - Graph structure is dynamically inferred at each forward pass
+    """
+
     def __init__(
         self,
-        gcn_true,
-        buildA_true,
-        gcn_depth,
-        num_nodes,
-        device,
-        predefined_A=None,
-        static_feat=None,
-        dropout=0.3,
-        subgraph_size=20,
-        node_dim=40,
-        dilation_exponential=1,
-        conv_channels=32,
-        residual_channels=32,
-        skip_channels=64,
-        end_channels=128,
-        seq_length=12,
-        in_dim=2,
-        out_dim=12,
-        layers=3,
-        propalpha=0.05,
-        tanhalpha=3,
-        layer_norm_affline=True,
-    ):
-        super(TMTGNN, self).__init__()
-        self.gcn_true = gcn_true
-        self.buildA_true = buildA_true
+        num_nodes: int,
+        in_channels: int,
+        seq_length: int,
+        out_channels: int,
+        device: torch.device,
+        diffusion_config: DiffusionConfig | None = None,
+        graph_config: GraphConfig | None = None,
+        norm_config: NormConfig | None = None,
+        tmtgnn_config: TMTGNNConfig | None = None,
+        transformer_config: TransformerConfig | None = None,
+    ) -> None:
+        """Initialize TMTGNN.
+
+        Args:
+            num_nodes (int):
+                Number of nodes in the graph.
+            in_channels (int):
+                Number of input channels.
+            seq_length (int):
+                Input sequence length.
+            out_channels (int):
+                Number of output channels.
+            device (torch.device):
+                Computation device.
+            diffusion_config (DiffusionConfig | None):
+                Configuration for graph diffusion layers.
+                Default is None.
+            graph_config (GraphConfig | None):
+                Configuration for graph structure learning.
+                Default is None.
+            norm_config (NormConfig | None):
+                Configuration for normalization layers.
+                Default is None.
+            tmtgnn_config (TMTGNNConfig | None):
+                Configuration for TMTGNN model hyperparameters.
+                Default is None.
+            transformer_config (TransformerConfig | None):
+                Configuration for Transformer temporal modeling.
+                Default is None.
+        """
+        super().__init__()
+
+        # =========================================================
+        # Setup
+        # =========================================================
+        diffusion_config = (
+            copy.deepcopy(diffusion_config) if diffusion_config else DiffusionConfig()
+        )
+        graph_config = copy.deepcopy(graph_config) if graph_config else GraphConfig()
+        norm_config = copy.deepcopy(norm_config) if norm_config else NormConfig()
+        tmtgnn_config = (
+            copy.deepcopy(tmtgnn_config) if tmtgnn_config else TMTGNNConfig()
+        )
+        transformer_config = (
+            copy.deepcopy(transformer_config)
+            if transformer_config
+            else TransformerConfig()
+        )
+
         self.num_nodes = num_nodes
-        self.dropout = dropout
-        self.predefined_A = predefined_A
-        self.filter_convs = nn.ModuleList()
-        self.gate_convs = nn.ModuleList()
-        self.residual_convs = nn.ModuleList()
-        self.skip_convs = nn.ModuleList()
-        self.gconv1 = nn.ModuleList()
-        self.gconv2 = nn.ModuleList()
-        self.norm = nn.ModuleList()
-        self.start_conv = nn.Conv2d(
-            in_channels=in_dim, out_channels=residual_channels, kernel_size=(1, 1)
-        )
-        self.gc = GraphLearner(
-            num_nodes,
-            subgraph_size,
-            node_dim,
-            device,
-            alpha=tanhalpha,
-            static_feat=static_feat,
-        )
-
         self.seq_length = seq_length
-        kernel_size = 7
-        if dilation_exponential > 1:
-            self.receptive_field = int(
-                1
-                + (kernel_size - 1)
-                * (dilation_exponential**layers - 1)
-                / (dilation_exponential - 1)
-            )
-        else:
-            self.receptive_field = layers * (kernel_size - 1) + 1
+        self.num_layers = tmtgnn_config.num_layers
+        self.dropout = tmtgnn_config.dropout
 
-        for i in range(1):
-            if dilation_exponential > 1:
-                rf_size_i = int(
-                    1
-                    + i
-                    * (kernel_size - 1)
-                    * (dilation_exponential**layers - 1)
-                    / (dilation_exponential - 1)
-                )
-            else:
-                rf_size_i = i * layers * (kernel_size - 1) + 1
-            new_dilation = 1
-            for j in range(1, layers + 1):
-                if dilation_exponential > 1:
-                    rf_size_j = int(
-                        rf_size_i
-                        + (kernel_size - 1)
-                        * (dilation_exponential**j - 1)
-                        / (dilation_exponential - 1)
-                    )
-                else:
-                    rf_size_j = rf_size_i + j * (kernel_size - 1)
+        # =========================================================
+        # Configuration Validations
+        # =========================================================
+        assert tmtgnn_config.hidden_dim % transformer_config.num_heads == 0, (
+            "hidden_dim must be divisible by num_heads"
+        )
+        assert tmtgnn_config.hidden_dim >= transformer_config.num_heads, (
+            "hidden_dim must be >= num_heads"
+        )
+        assert graph_config.subgraph_size <= self.num_nodes, "subgraph_size must be <= num_nodes"
 
-                self.filter_convs.append(
-                    dilated_inception(
-                        residual_channels, conv_channels, dilation_factor=new_dilation
-                    )
-                )
-                self.gate_convs.append(
-                    dilated_inception(
-                        residual_channels, conv_channels, dilation_factor=new_dilation
-                    )
-                )
-                self.residual_convs.append(
-                    nn.Conv2d(
-                        in_channels=conv_channels,
-                        out_channels=residual_channels,
-                        kernel_size=(1, 1),
-                    )
-                )
-                if self.seq_length > self.receptive_field:
-                    self.skip_convs.append(
-                        nn.Conv2d(
-                            in_channels=conv_channels,
-                            out_channels=skip_channels,
-                            kernel_size=(1, self.seq_length - rf_size_j + 1),
-                        )
-                    )
-                else:
-                    self.skip_convs.append(
-                        nn.Conv2d(
-                            in_channels=conv_channels,
-                            out_channels=skip_channels,
-                            kernel_size=(1, self.receptive_field - rf_size_j + 1),
-                        )
-                    )
+        assert num_nodes > 0, "num_nodes must be > 0"
+        assert isinstance(num_nodes, int), "num_nodes must be an int"
 
-                if self.gcn_true:
-                    self.gconv1.append(
-                        GraphDiffusion(
-                            conv_channels,
-                            residual_channels,
-                            gcn_depth,
-                            dropout,
-                            propalpha,
-                        )
-                    )
-                    self.gconv2.append(
-                        GraphDiffusion(
-                            conv_channels,
-                            residual_channels,
-                            gcn_depth,
-                            dropout,
-                            propalpha,
-                        )
-                    )
+        assert in_channels > 0, "in_channels must be > 0"
+        assert isinstance(in_channels, int), "in_channels must be an int"
 
-                if self.seq_length > self.receptive_field:
-                    self.norm.append(
-                        LayerNorm(
-                            (
-                                residual_channels,
-                                num_nodes,
-                                self.seq_length - rf_size_j + 1,
-                            ),
-                            elementwise_affine=layer_norm_affline,
-                        )
-                    )
-                else:
-                    self.norm.append(
-                        LayerNorm(
-                            (
-                                residual_channels,
-                                num_nodes,
-                                self.receptive_field - rf_size_j + 1,
-                            ),
-                            elementwise_affine=layer_norm_affline,
-                        )
-                    )
+        assert seq_length > 0, "seq_length must be > 0"
+        assert isinstance(seq_length, int), "seq_length must be an int"
 
-                new_dilation *= dilation_exponential
+        assert out_channels > 0, "out_channels must be > 0"
+        assert isinstance(out_channels, int), "out_channels must be an int"
 
-        self.layers = layers
-        self.end_conv_1 = nn.Conv2d(
-            in_channels=skip_channels,
-            out_channels=end_channels,
+        assert isinstance(device, torch.device), "device must be torch.device"
+
+        # =========================================================
+        # Graph Structure Learning
+        # =========================================================
+        self.graph_learner = GraphStructureLearner(
+            num_nodes=num_nodes,
+            top_k=graph_config.subgraph_size,
+            hidden_dim=graph_config.node_dim,
+            alpha=graph_config.alpha,
+            noise_scale=graph_config.noise_scale,
+            node_features=graph_config.node_features,
+        )
+
+        # =========================================================
+        # Input Projection
+        # =========================================================
+        self.input_projection = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=tmtgnn_config.hidden_dim,
             kernel_size=(1, 1),
-            bias=True,
         )
-        self.end_conv_2 = nn.Conv2d(
-            in_channels=end_channels,
-            out_channels=out_dim,
+
+        # =========================================================
+        # Spatio-Temporal Blocks
+        # =========================================================
+        self.temporal_layers = nn.ModuleList()
+        self.diffusion_forward = nn.ModuleList()
+        self.diffusion_backward = nn.ModuleList()
+        self.skip_projections = nn.ModuleList()
+        self.normalization_layers = nn.ModuleList()
+
+        for _ in range(self.num_layers):
+            self.temporal_layers.append(
+                Transformer(
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.hidden_dim,
+                    num_head=transformer_config.num_heads,
+                    num_layers=transformer_config.num_layers,
+                    dropout=transformer_config.dropout,
+                )
+            )
+            self.diffusion_forward.append(
+                GraphDiffusion(
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.hidden_dim,
+                    diffusion_steps=diffusion_config.gcn_depth,
+                    residual_alpha=diffusion_config.residual_alpha,
+                    projection_bias=diffusion_config.projection_bias,
+                )
+            )
+            self.diffusion_backward.append(
+                GraphDiffusion(
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.hidden_dim,
+                    diffusion_steps=diffusion_config.gcn_depth,
+                    residual_alpha=diffusion_config.residual_alpha,
+                    projection_bias=diffusion_config.projection_bias,
+                )
+            )
+            self.skip_projections.append(
+                nn.Conv2d(
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.skip_dim,
+                    kernel_size=(1, 1)
+                )
+            )
+            self.normalization_layers.append(
+                LayerNorm(
+                    (tmtgnn_config.hidden_dim, num_nodes, seq_length),
+                    eps=norm_config.eps,
+                    elementwise_affine=norm_config.affine,
+                )
+            )
+
+        # =========================================================
+        # Output Head
+        # =========================================================
+        self.head_1 = nn.Conv2d(
+            in_channels=tmtgnn_config.skip_dim,
+            out_channels=tmtgnn_config.head_dim,
             kernel_size=(1, 1),
-            bias=True,
         )
-        if self.seq_length > self.receptive_field:
-            self.skip0 = nn.Conv2d(
-                in_channels=in_dim,
-                out_channels=skip_channels,
-                kernel_size=(1, self.seq_length),
-                bias=True,
-            )
-            self.skipE = nn.Conv2d(
-                in_channels=residual_channels,
-                out_channels=skip_channels,
-                kernel_size=(1, self.seq_length - self.receptive_field + 1),
-                bias=True,
-            )
-
-        else:
-            self.skip0 = nn.Conv2d(
-                in_channels=in_dim,
-                out_channels=skip_channels,
-                kernel_size=(1, self.receptive_field),
-                bias=True,
-            )
-            self.skipE = nn.Conv2d(
-                in_channels=residual_channels,
-                out_channels=skip_channels,
-                kernel_size=(1, 1),
-                bias=True,
-            )
-
-        self.idx = torch.arange(self.num_nodes).to(device)
-
-    def forward(self, input, idx=None):
-        seq_len = input.size(3)
-        assert seq_len == self.seq_length, (
-            "input sequence length not equal to preset sequence length"
+        self.head_2 = nn.Conv2d(
+            in_channels=tmtgnn_config.head_dim,
+            out_channels=out_channels,
+            kernel_size=(1, 1),
         )
 
-        if self.seq_length < self.receptive_field:
-            input = nn.functional.pad(
-                input, (self.receptive_field - self.seq_length, 0, 0, 0)
-            )
+        self.register_buffer("idx", torch.arange(self.num_nodes, device=device))
 
-        if self.gcn_true:
-            if self.buildA_true:
-                if idx is None:
-                    adp = self.gc(self.idx)
-                else:
-                    adp = self.gc(idx)
-            else:
-                adp = self.predefined_A
+    def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
+        """Compute forward pass of TMTGNN.
 
-        x = self.start_conv(input)
-        skip = self.skip0(F.dropout(input, self.dropout, training=self.training))
-        for i in range(self.layers):
+        Performs spatio-temporal modeling in the following pipeline:
+        (1) Learns a dynamic graph from node embeddings
+        (2) Applies temporal attention via Transformer layers
+        (3) Performs bidirectional graph diffusion for spatial propagation
+        (4) Aggregates multi-layer skip connections
+        (5) Produces final predictions via output projection
+
+        Args:
+            x (torch.Tensor):
+                Input tensor of shape (n, c, v, l), where:
+                    - n: batch size
+                    - c: input channels
+                    - v: number of nodes
+                    - l: sequence length
+            idx (torch.Tensor | None):
+                Node index tensor of shape (v,) where v is the number of nodes,
+                used for graph construction. Default is None.
+
+        Returns:
+            torch.Tensor:
+                Output tensor of shape (n, c_out, v, l), where:
+                    - n: batch size
+                    - c_out: output channels
+                    - v: number of nodes
+                    - l: sequence length
+        """
+        node_idx = idx if idx is not None else self.idx
+        adj = self.graph_learner(node_idx)
+
+        x = self.input_projection(x)
+        skip = 0
+
+        for i in range(self.num_layers):
             residual = x
-            filter = self.filter_convs[i](x)
-            filter = torch.tanh(filter)
-            gate = self.gate_convs[i](x)
-            gate = torch.sigmoid(gate)
-            x = filter * gate
+
+            x = self.temporal_layers[i](x)
+
+            x = self.diffusion_forward[i](x, adj) + self.diffusion_backward[i](
+                x, adj.t()
+            )
             x = F.dropout(x, self.dropout, training=self.training)
-            s = x
-            s = self.skip_convs[i](s)
-            skip = s + skip
-            if self.gcn_true:
-                x = self.gconv1[i](x, adp) + self.gconv2[i](x, adp.transpose(1, 0))
-            else:
-                x = self.residual_convs[i](x)
 
-            x = x + residual[:, :, :, -x.size(3) :]
-            if idx is None:
-                x = self.norm[i](x, self.idx)
-            else:
-                x = self.norm[i](x, idx)
+            skip += self.skip_projections[i](x)
 
-        skip = self.skipE(x) + skip
+            x = x + residual
+            x = self.normalization_layers[i](x, node_idx)
+
         x = F.relu(skip)
-        x = F.relu(self.end_conv_1(x))
-        x = self.end_conv_2(x)
+        x = F.relu(self.head_1(x))
+        x = self.head_2(x)
+
         return x

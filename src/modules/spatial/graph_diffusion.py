@@ -10,8 +10,9 @@ steps and projects them into a target feature space.
 
 import torch
 import torch.nn as nn
-from modules.spatial.graph_conv import GraphConv
-from layers.projection import ChannelProjection
+from modules import GraphConv
+from layers import ChannelProjection
+
 
 class GraphDiffusion(nn.Module):
     """Graph diffusion layer.
@@ -34,6 +35,7 @@ class GraphDiffusion(nn.Module):
         out_channels: int,
         diffusion_steps: int,
         residual_alpha: float,
+        projection_bias: bool = True,
     ) -> None:
         """Initialize GraphDiffusion layer.
 
@@ -47,12 +49,15 @@ class GraphDiffusion(nn.Module):
             residual_alpha (float):
                 Mixing coefficient between input features and
                 diffused features. Must be in [0, 1].
+            projection_bias (bool):
+                Whether to include a learnable bias term in the projection layer.
+                Default is True.
         """
         super().__init__()
 
         self.graph_conv = GraphConv()
-        self.channel_projection = ChannelProjection(
-            (diffusion_steps + 1) * in_channels, out_channels
+        self.projection = ChannelProjection(
+            (diffusion_steps + 1) * in_channels, out_channels, bias=projection_bias
         )
         self.diffusion_steps = diffusion_steps
         self.residual_alpha = residual_alpha
@@ -99,6 +104,6 @@ class GraphDiffusion(nn.Module):
             diffusion_states.append(hidden)
 
         output = torch.cat(diffusion_states, dim=1)
-        output = self.channel_projection(output)
+        output = self.projection(output)
 
         return output

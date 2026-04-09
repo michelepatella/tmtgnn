@@ -46,7 +46,7 @@ class GraphStructureLearner(nn.Module):
             alpha (float):
                 Scaling factor for non-linearity sharpness. Default is 3.0.
             noise_scale (float):
-                Scale of random noise added to adjacency scores for stability. 
+                Scale of random noise added to adjacency scores for stability.
                 Default is 0.01.
             node_features (torch.Tensor | None):
                 Precomputed node features of shape (num_nodes, feature_dim).
@@ -59,9 +59,11 @@ class GraphStructureLearner(nn.Module):
         self.hidden_dim = hidden_dim
         self.alpha = alpha
         self.noise_scale = noise_scale
-        self.node_features = node_features
+        self.node_features = None
 
         if node_features is not None:
+            self.register_buffer("node_features", node_features)
+
             feature_dim = node_features.shape[1]
 
             self.src_encoder = nn.Linear(feature_dim, hidden_dim)
@@ -81,16 +83,16 @@ class GraphStructureLearner(nn.Module):
         parameterized separately to enable directed edge modeling.
 
         Args:
-            idx (torch.Tensor): 
+            idx (torch.Tensor):
                 Node index tensor of shape (n,), where n is the number
                 of selected nodes used to build the local graph structure.
 
         Returns:
             tuple[torch.Tensor, torch.Tensor]:
                 Tuple containing:
-                    - node_src (torch.Tensor): 
+                    - node_src (torch.Tensor):
                         Source node representations of shape (n, hidden_dim)
-                    - node_dst (torch.Tensor): 
+                    - node_dst (torch.Tensor):
                         Destination node representations of shape (n, hidden_dim)
         """
         if self.node_features is None:
@@ -135,11 +137,13 @@ class GraphStructureLearner(nn.Module):
         score = torch.mm(node_src, node_dst.t()) - torch.mm(node_dst, node_src.t())
 
         adj = torch.relu(torch.tanh(self.alpha * score))
+        if self.training and self.noise_scale > 0.0:
+            adj_for_topk = adj + torch.rand_like(adj) * self.noise_scale
+        else:
+            adj_for_topk = adj
 
-        noise = torch.rand_like(adj) * self.noise_scale
-        adj_noisy = adj + noise
-
-        _, top_idx = adj_noisy.topk(self.top_k, dim=1)
+        k = min(self.top_k, adj_for_topk.size(1))
+        _, top_idx = adj_for_topk.topk(k, dim=1)
 
         mask = torch.zeros_like(adj)
         mask.scatter_(1, top_idx, 1.0)
