@@ -86,16 +86,16 @@ class Transformer(nn.Module):
 
         Args:
             x (torch.Tensor):
-                Input feature map of shape (n, c, v, l), where:
-                    - n: batch size
+                Input feature map of shape (b, c, v, l), where:
+                    - b: batch size
                     - c: number of input channels
                     - v: number of nodes
                     - l: sequence length (temporal dimension)
 
         Returns:
             torch.Tensor:
-                Output feature map of shape (n, c_out, v, l), where:
-                    - n: batch size (same as input)
+                Output feature map of shape (b, c_out, v, l), where:
+                    - b: batch size (same as input)
                     - c_out: number of output channels
                     - v: number of nodes (same as input)
                     - l: sequence length (same as input)
