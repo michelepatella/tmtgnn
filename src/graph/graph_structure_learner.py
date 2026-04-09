@@ -20,7 +20,7 @@ class GraphStructureLearner(nn.Module):
     selection, enabling adaptive structure construction.
 
     Notes:
-        - Supports learnable node embeddings or external features
+        - Operates on external node representations provided at runtime
         - Produces asymmetric adjacency (directional structure)
         - Uses top-k sparsification for stability and efficiency
     """
@@ -59,7 +59,6 @@ class GraphStructureLearner(nn.Module):
         self.hidden_dim = hidden_dim
         self.alpha = alpha
         self.noise_scale = noise_scale
-        self.node_features = None
 
         if node_features is not None:
             self.register_buffer("node_features", node_features)
@@ -69,45 +68,10 @@ class GraphStructureLearner(nn.Module):
             self.src_encoder = nn.Linear(feature_dim, hidden_dim)
             self.dst_encoder = nn.Linear(feature_dim, hidden_dim)
         else:
-            self.src_embedding = nn.Embedding(num_nodes, hidden_dim)
-            self.dst_embedding = nn.Embedding(num_nodes, hidden_dim)
-
             self.src_encoder = nn.Linear(hidden_dim, hidden_dim)
             self.dst_encoder = nn.Linear(hidden_dim, hidden_dim)
 
-    def _encode_nodes(self, idx: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Compute node representations for graph structure learning.
-
-        Produces two distinct node embeddings used to construct an
-        asymmetric adjacency matrix. The two representations are
-        parameterized separately to enable directed edge modeling.
-
-        Args:
-            idx (torch.Tensor):
-                Node index tensor of shape (n,), where n is the number
-                of selected nodes used to build the local graph structure.
-
-        Returns:
-            tuple[torch.Tensor, torch.Tensor]:
-                Tuple containing:
-                    - node_src (torch.Tensor):
-                        Source node representations of shape (n, hidden_dim)
-                    - node_dst (torch.Tensor):
-                        Destination node representations of shape (n, hidden_dim)
-        """
-        if self.node_features is None:
-            node_src = self.src_embedding(idx)
-            node_dst = self.dst_embedding(idx)
-        else:
-            node_src = self.node_features[idx]
-            node_dst = node_src
-
-        node_src = torch.tanh(self.alpha * self.src_encoder(node_src))
-        node_dst = torch.tanh(self.alpha * self.dst_encoder(node_dst))
-
-        return node_src, node_dst
-
-    def forward(self, idx: torch.Tensor) -> torch.Tensor:
+    def forward(self, node_repr: torch.Tensor) -> torch.Tensor:
         """Compute sparse learned adjacency matrix.
 
         Learns a directed sparse adjacency matrix from node representations
@@ -116,27 +80,34 @@ class GraphStructureLearner(nn.Module):
         learned graph structure used for downstream message passing.
 
         Args:
-            idx (torch.Tensor):
-                Node index tensor of shape (n,), where:
-                    - n: number of nodes in the selected subgraph used
-                         for adjacency construction
+            node_repr (torch.Tensor):
+                Node representation tensor of shape (n, hidden_dim), where:
+                    - n: number of nodes in the graph
+                    - hidden_dim: embedding dimension
+
+                This representation can be:
+                    - Learned node embeddings
+                    - Projected external node features
+                    - Combination of both
 
         Returns:
             torch.Tensor:
                 Sparse learned adjacency matrix of shape (n, n), where:
-                    - n: number of nodes in the selected subgraph
+                    - n: number of nodes in the graph
 
                 The matrix is:
                     - Asymmetric (directed graph structure)
                     - Sparse (enforced by top-k selection)
-                    - Non-negative (after ReLU activation)
+                    - Non-negative (after sigmoid activation)
                     - Stochastic during training (due to noise injection)
         """
-        node_src, node_dst = self._encode_nodes(idx)
+        node_src = torch.tanh(self.src_encoder(node_repr))
+        node_dst = torch.tanh(self.dst_encoder(node_repr))
 
         score = torch.mm(node_src, node_dst.t()) - torch.mm(node_dst, node_src.t())
 
-        adj = torch.relu(torch.tanh(self.alpha * score))
+        adj = torch.sigmoid(self.alpha * score)
+
         if self.training and self.noise_scale > 0.0:
             adj_for_topk = adj + torch.rand_like(adj) * self.noise_scale
         else:
@@ -145,7 +116,6 @@ class GraphStructureLearner(nn.Module):
         k = min(self.top_k, adj_for_topk.size(1))
         _, top_idx = adj_for_topk.topk(k, dim=1)
 
-        mask = torch.zeros_like(adj)
-        mask.scatter_(1, top_idx, 1.0)
+        mask = torch.zeros_like(adj).scatter(1, top_idx, 1.0)
 
         return (adj * mask).contiguous()

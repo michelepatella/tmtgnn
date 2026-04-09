@@ -15,7 +15,7 @@ class GraphConfig:
     """Configuration for graph structure learning.
 
     Attributes:
-        subgraph_size (int):
+        top_k (int):
             Number of outgoing edges per node in learned graph.
             Default is 20.
         node_dim (int):
@@ -32,7 +32,7 @@ class GraphConfig:
             construction. Default is None.
     """
 
-    subgraph_size: int = 20
+    top_k: int = 20
     node_dim: int = 40
     alpha: float = 3.0
     noise_scale: float = 0.01
@@ -40,8 +40,8 @@ class GraphConfig:
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization."""
-        assert isinstance(self.subgraph_size, int), "subgraph_size must be int"
-        assert self.subgraph_size > 0, "subgraph_size must be > 0"
+        assert isinstance(self.top_k, int), "top_k must be int"
+        assert self.top_k > 0, "top_k must be > 0"
 
         assert isinstance(self.node_dim, int), "node_dim must be int"
         assert self.node_dim > 0, "node_dim must be > 0"

@@ -101,7 +101,16 @@ class TMTGNN(nn.Module):
         self.seq_length = seq_length
         self.num_layers = tmtgnn_config.num_layers
         self.dropout = tmtgnn_config.dropout
-
+        
+        self.node_embedding = nn.Embedding(num_nodes, graph_config.node_dim)
+        if graph_config.node_features is not None:
+            self.node_feat_proj = nn.Linear(
+                graph_config.node_features.shape[1],
+                graph_config.node_dim
+            )
+        else:
+            self.node_feat_proj = None
+        
         # =========================================================
         # Configuration Validations
         # =========================================================
@@ -111,7 +120,7 @@ class TMTGNN(nn.Module):
         assert tmtgnn_config.hidden_dim >= transformer_config.num_heads, (
             "hidden_dim must be >= num_heads"
         )
-        assert graph_config.subgraph_size <= self.num_nodes, "subgraph_size must be <= num_nodes"
+        assert 0 < graph_config.top_k < self.num_nodes, "top_k must be in (0, num_nodes)"
 
         assert num_nodes > 0, "num_nodes must be > 0"
         assert isinstance(num_nodes, int), "num_nodes must be an int"
@@ -132,7 +141,7 @@ class TMTGNN(nn.Module):
         # =========================================================
         self.graph_learner = GraphStructureLearner(
             num_nodes=num_nodes,
-            top_k=graph_config.subgraph_size,
+            top_k=graph_config.top_k,
             hidden_dim=graph_config.node_dim,
             alpha=graph_config.alpha,
             noise_scale=graph_config.noise_scale,
@@ -213,7 +222,7 @@ class TMTGNN(nn.Module):
             out_channels=out_channels,
             kernel_size=(1, 1),
         )
-
+        
         self.register_buffer("idx", torch.arange(self.num_nodes, device=device))
 
     def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
@@ -244,13 +253,22 @@ class TMTGNN(nn.Module):
                     - c_out: output channels
                     - v: number of nodes
                     - l: sequence length
-        """
+        """                
         node_idx = idx if idx is not None else self.idx
-        adj = self.graph_learner(node_idx)
+        emb = self.node_embedding(node_idx)
+
+        if self.node_feat_proj is not None:
+            feat = self.graph_learner.node_features  # (N, F)
+            feat = self.node_feat_proj(feat)
+            node_repr = emb + feat
+        else:
+            node_repr = emb
+
+        adj = self.graph_learner(node_repr)
 
         x = self.input_projection(x)
-        skip = 0
-
+        skip = None
+        
         for i in range(self.num_layers):
             residual = x
 
@@ -261,13 +279,17 @@ class TMTGNN(nn.Module):
             )
             x = F.dropout(x, self.dropout, training=self.training)
 
-            skip += self.skip_projections[i](x)
+            proj = self.skip_projections[i](x) / self.num_layers
+            skip = proj if skip is None else skip + proj
 
             x = x + residual
             x = self.normalization_layers[i](x, node_idx)
 
-        x = F.relu(skip)
-        x = F.relu(self.head_1(x))
+        x = self.head_1(skip)
+        x = F.relu(x)
         x = self.head_2(x)
+        x = x[:, :, :, -1]
+        if x.size(1) == 1:
+            x = x[:, 0]
 
         return x
