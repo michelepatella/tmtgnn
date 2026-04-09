@@ -27,12 +27,16 @@ class GraphConfig:
         node_features (torch.Tensor | None):
             External node feature matrix used to condition graph
             construction. Default is None.
+        ema_alpha (float):
+            Exponential moving average factor for learned adjacency.
+            Default is 0.8.
     """
 
     top_k: int = 20
     alpha: float = 3.0
     noise_scale: float = 0.01
     node_features: torch.Tensor | None = None
+    ema_alpha: float = 0.8
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization."""
@@ -52,3 +56,6 @@ class GraphConfig:
             assert self.node_features.dim() == 2, (
                 "node_features must be [num_nodes, feat_dim]"
             )
+
+        assert isinstance(self.ema_alpha, float), "ema_alpha must be float"
+        assert 0.0 <= self.ema_alpha <= 1.0, "ema_alpha must be in [0, 1]"
