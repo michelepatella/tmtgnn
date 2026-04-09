@@ -71,8 +71,8 @@ class GraphDiffusion(nn.Module):
 
         Args:
             x (torch.Tensor):
-                Input feature map of shape (n, c, v, l), where:
-                    - n: batch size
+                Input feature map of shape (b, c, v, l), where:
+                    - b: batch size
                     - c: number of channels
                     - v: number of nodes
                     - l: sequence length
@@ -83,24 +83,29 @@ class GraphDiffusion(nn.Module):
 
         Returns:
             torch.Tensor:
-                Output feature map of shape (n, c_out, v, l), where:
-                    - n: batch size (same as input)
+                Output feature map of shape (b, c_out, v, l), where:
+                    - b: batch size (same as input)
                     - c_out: number of output channels after projection
                     - v: number of nodes (same as input)
                     - l: sequence length (same as input)
         """
-        adj = adj + torch.eye(adj.size(0), device=x.device)
+        if adj.dim() == 2:
+            adj = adj.unsqueeze(0)
 
-        degree = adj.sum(dim=1)
-        normalized_adj = adj / degree.view(-1, 1)
+        _, N, _ = adj.shape
+
+        eye = torch.eye(N, device=x.device).unsqueeze(0)
+        adj = adj + eye
+
+        degree = adj.sum(dim=-1, keepdim=True)
+        normalized_adj = adj / (degree + 1e-8)
 
         hidden = x
         diffusion_states = [hidden]
 
         for _ in range(self.diffusion_steps):
-            hidden = self.residual_alpha * x + (
-                1 - self.residual_alpha
-            ) * self.graph_conv(hidden, normalized_adj)
+            agg = self.graph_conv(hidden, normalized_adj)
+            hidden = self.residual_alpha * x + (1 - self.residual_alpha) * agg
             diffusion_states.append(hidden)
 
         output = torch.cat(diffusion_states, dim=1)

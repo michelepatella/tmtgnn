@@ -101,12 +101,14 @@ class TMTGNN(nn.Module):
         self.seq_length = seq_length
         self.num_layers = tmtgnn_config.num_layers
         self.dropout = tmtgnn_config.dropout
-        
-        self.node_embedding = nn.Embedding(num_nodes, graph_config.node_dim)
+        self.node_repr_prev = None
+        self.ema_alpha = graph_config.ema_alpha
+
+        self.node_embedding = nn.Embedding(num_nodes, tmtgnn_config.hidden_dim)
         if graph_config.node_features is not None:
             self.node_feat_proj = nn.Linear(
                 graph_config.node_features.shape[1],
-                graph_config.node_dim
+                tmtgnn_config.hidden_dim
             )
         else:
             self.node_feat_proj = None
@@ -142,7 +144,7 @@ class TMTGNN(nn.Module):
         self.graph_learner = GraphStructureLearner(
             num_nodes=num_nodes,
             top_k=graph_config.top_k,
-            hidden_dim=graph_config.node_dim,
+            hidden_dim=tmtgnn_config.hidden_dim,
             alpha=graph_config.alpha,
             noise_scale=graph_config.noise_scale,
             node_features=graph_config.node_features,
@@ -237,8 +239,8 @@ class TMTGNN(nn.Module):
 
         Args:
             x (torch.Tensor):
-                Input tensor of shape (n, c, v, l), where:
-                    - n: batch size
+                Input tensor of shape (b, c, v, l), where:
+                    - b: batch size
                     - c: input channels
                     - v: number of nodes
                     - l: sequence length
@@ -248,34 +250,54 @@ class TMTGNN(nn.Module):
 
         Returns:
             torch.Tensor:
-                Output tensor of shape (n, c_out, v, l), where:
-                    - n: batch size
+                Output tensor of shape (b, c_out, v, l), where:
+                    - b: batch size
                     - c_out: output channels
                     - v: number of nodes
                     - l: sequence length
         """                
         node_idx = idx if idx is not None else self.idx
-        emb = self.node_embedding(node_idx)
-
-        if self.node_feat_proj is not None:
-            feat = self.graph_learner.node_features  # (N, F)
-            feat = self.node_feat_proj(feat)
-            node_repr = emb + feat
-        else:
-            node_repr = emb
-
-        adj = self.graph_learner(node_repr)
 
         x = self.input_projection(x)
+
+        h = x[:, :, :, -1]
+        h = h.permute(0, 2, 1)
+
+        emb = self.node_embedding(node_idx)
+        emb = emb.unsqueeze(0).expand(h.size(0), -1, -1)
+
+        node_repr = h + emb
+
+        if self.node_feat_proj is not None:
+            feat = self.graph_learner.node_features
+            feat = self.node_feat_proj(feat)
+            feat = feat.unsqueeze(0).expand(h.size(0), -1, -1)
+            node_repr = node_repr + feat
+
+        node_repr_mean = node_repr.mean(dim=0)
+        if self.node_repr_prev is not None:
+            node_repr_mean = (
+                self.ema_alpha * node_repr_mean +
+                (1 - self.ema_alpha) * self.node_repr_prev
+            )
+
+        self.node_repr_prev = node_repr_mean.detach()
+        node_repr = node_repr + node_repr_mean.unsqueeze(0)
+
+        adj = torch.stack(
+            [self.graph_learner(nr) for nr in node_repr],
+            dim=0
+        )
+
         skip = None
-        
+
         for i in range(self.num_layers):
             residual = x
 
             x = self.temporal_layers[i](x)
 
             x = self.diffusion_forward[i](x, adj) + self.diffusion_backward[i](
-                x, adj.t()
+                x, adj.transpose(-1, -2)
             )
             x = F.dropout(x, self.dropout, training=self.training)
 
@@ -289,6 +311,7 @@ class TMTGNN(nn.Module):
         x = F.relu(x)
         x = self.head_2(x)
         x = x[:, :, :, -1]
+
         if x.size(1) == 1:
             x = x[:, 0]
 
