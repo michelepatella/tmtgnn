@@ -59,9 +59,11 @@ class GraphStructureLearner(nn.Module):
         self.hidden_dim = hidden_dim
         self.alpha = alpha
         self.noise_scale = noise_scale
-        self.node_features = node_features
+        self.node_features = None
 
         if node_features is not None:
+            self.register_buffer("node_features", node_features)
+
             feature_dim = node_features.shape[1]
 
             self.src_encoder = nn.Linear(feature_dim, hidden_dim)
@@ -135,11 +137,13 @@ class GraphStructureLearner(nn.Module):
         score = torch.mm(node_src, node_dst.t()) - torch.mm(node_dst, node_src.t())
 
         adj = torch.relu(torch.tanh(self.alpha * score))
+        if self.training and self.noise_scale > 0.0:
+            adj_for_topk = adj + torch.rand_like(adj) * self.noise_scale
+        else:
+            adj_for_topk = adj
 
-        noise = torch.rand_like(adj) * self.noise_scale
-        adj_noisy = adj + noise
-
-        _, top_idx = adj_noisy.topk(self.top_k, dim=1)
+        k = min(self.top_k, adj_for_topk.size(1))
+        _, top_idx = adj_for_topk.topk(k, dim=1)
 
         mask = torch.zeros_like(adj)
         mask.scatter_(1, top_idx, 1.0)

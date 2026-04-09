@@ -111,6 +111,7 @@ class TMTGNN(nn.Module):
         assert tmtgnn_config.hidden_dim >= transformer_config.num_heads, (
             "hidden_dim must be >= num_heads"
         )
+        assert graph_config.subgraph_size <= self.num_nodes, "subgraph_size must be <= num_nodes"
 
         assert num_nodes > 0, "num_nodes must be > 0"
         assert isinstance(num_nodes, int), "num_nodes must be an int"
@@ -188,7 +189,7 @@ class TMTGNN(nn.Module):
                 nn.Conv2d(
                     in_channels=tmtgnn_config.hidden_dim,
                     out_channels=tmtgnn_config.skip_dim,
-                    kernel_size=(1, seq_length),
+                    kernel_size=(1, 1)
                 )
             )
             self.normalization_layers.append(
@@ -213,7 +214,7 @@ class TMTGNN(nn.Module):
             kernel_size=(1, 1),
         )
 
-        self.idx = torch.arange(self.num_nodes).to(device)
+        self.register_buffer("idx", torch.arange(self.num_nodes, device=device))
 
     def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
         """Compute forward pass of TMTGNN.
