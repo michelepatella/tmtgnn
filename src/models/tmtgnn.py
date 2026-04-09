@@ -80,6 +80,9 @@ class TMTGNN(nn.Module):
         """
         super().__init__()
 
+        # =========================================================
+        # Setup
+        # =========================================================
         diffusion_config = (
             copy.deepcopy(diffusion_config) if diffusion_config else DiffusionConfig()
         )
@@ -98,6 +101,30 @@ class TMTGNN(nn.Module):
         self.seq_length = seq_length
         self.num_layers = tmtgnn_config.num_layers
         self.dropout = tmtgnn_config.dropout
+
+        # =========================================================
+        # Configuration Validations
+        # =========================================================
+        assert tmtgnn_config.hidden_dim % transformer_config.num_heads == 0, (
+            "hidden_dim must be divisible by num_heads"
+        )
+        assert tmtgnn_config.hidden_dim >= transformer_config.num_heads, (
+            "hidden_dim must be >= num_heads"
+        )
+
+        assert num_nodes > 0, "num_nodes must be > 0"
+        assert isinstance(num_nodes, int), "num_nodes must be an int"
+
+        assert in_channels > 0, "in_channels must be > 0"
+        assert isinstance(in_channels, int), "in_channels must be an int"
+
+        assert seq_length > 0, "seq_length must be > 0"
+        assert isinstance(seq_length, int), "seq_length must be an int"
+
+        assert out_channels > 0, "out_channels must be > 0"
+        assert isinstance(out_channels, int), "out_channels must be an int"
+
+        assert isinstance(device, torch.device), "device must be torch.device"
 
         # =========================================================
         # Graph Structure Learning

@@ -20,3 +20,14 @@ class TransformerConfig:
     num_heads: int = 4
     num_layers: int = 2
     dropout: float = 0.3
+
+    def __post_init__(self) -> None:
+        """Validates the configuration parameters after initialization."""
+        assert isinstance(self.num_heads, int), "num_heads must be int"
+        assert self.num_heads > 0, "num_heads must be > 0"
+
+        assert isinstance(self.num_layers, int), "num_layers must be int"
+        assert self.num_layers > 0, "num_layers must be > 0"
+
+        assert isinstance(self.dropout, float), "dropout must be float"
+        assert 0.0 <= self.dropout <= 1.0, "dropout must be in [0, 1]"

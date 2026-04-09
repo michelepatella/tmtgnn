@@ -24,3 +24,19 @@ class TMTGNNConfig:
     skip_dim: int = 64
     head_dim: int = 128
     num_layers: int = 3
+
+    def __post_init__(self) -> None:
+        """Validates the configuration parameters after initialization."""
+        assert isinstance(self.hidden_dim, int), "hidden_dim must be int"
+        assert self.hidden_dim > 0, "hidden_dim must be > 0"
+
+        assert isinstance(self.skip_dim, int), "skip_dim must be int"
+        assert self.skip_dim > 0, "skip_dim must be > 0"
+        assert self.skip_dim >= self.hidden_dim, "skip_dim should be >= hidden_dim"
+
+        assert isinstance(self.head_dim, int), "head_dim must be int"
+        assert self.head_dim > 0, "head_dim must be > 0"
+        assert self.head_dim >= self.hidden_dim, "head_dim should be >= hidden_dim"
+
+        assert isinstance(self.num_layers, int), "num_layers must be int"
+        assert self.num_layers > 0, "num_layers must be > 0"
