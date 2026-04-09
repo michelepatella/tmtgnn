@@ -10,7 +10,7 @@ steps and projects them into a target feature space.
 
 import torch
 import torch.nn as nn
-from modules import GraphConv
+from .graph_conv import GraphConv
 from layers import ChannelProjection
 
 
