@@ -1,3 +1,11 @@
+"""src/config/tmtgnn_config.py
+
+TMTGNN configuration.
+
+Provides the `TMTGNNConfig` class, which implements configuration
+for the TMTGNN model.
+"""
+
 from dataclasses import dataclass
 
 

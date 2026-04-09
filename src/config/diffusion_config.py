@@ -1,3 +1,11 @@
+"""src/config/diffusion_config.py
+
+Diffusion configuration.
+
+Provides the `DiffusionConfig` class, which implements configuration
+for graph diffusion layers.
+"""
+
 from dataclasses import dataclass
 
 

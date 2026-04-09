@@ -1,3 +1,11 @@
+"""src/config/norm_config.py
+
+Normalization configuration.
+
+Provides the `NormConfig` class, which implements configuration
+for normalization layers.
+"""
+
 from dataclasses import dataclass
 
 

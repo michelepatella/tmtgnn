@@ -1,3 +1,11 @@
+"""src/config/graph_config.py
+
+Graph configuration.
+
+Provides the `GraphConfig` class, which implements configuration
+for graph structure learning.
+"""
+
 import torch
 from dataclasses import dataclass
 

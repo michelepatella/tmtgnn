@@ -1,3 +1,11 @@
+"""src/config/transformer_config.py
+
+Transformer configuration.
+
+Provides the `TransformerConfig` class, which implements configuration
+for Transformer-based temporal modeling.
+"""
+
 from dataclasses import dataclass
 
 
