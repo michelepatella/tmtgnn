@@ -62,14 +62,11 @@ class GraphStructureLearner(nn.Module):
 
         if node_features is not None:
             self.register_buffer("node_features", node_features)
-
-            feature_dim = node_features.shape[1]
-
-            self.src_encoder = nn.Linear(feature_dim, hidden_dim)
-            self.dst_encoder = nn.Linear(feature_dim, hidden_dim)
         else:
-            self.src_encoder = nn.Linear(hidden_dim, hidden_dim)
-            self.dst_encoder = nn.Linear(hidden_dim, hidden_dim)
+            self.node_features = None
+
+        self.src_encoder = nn.Linear(hidden_dim, hidden_dim)
+        self.dst_encoder = nn.Linear(hidden_dim, hidden_dim)
 
     def forward(self, node_repr: torch.Tensor) -> torch.Tensor:
         """Compute sparse learned adjacency matrix.
