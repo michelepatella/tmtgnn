@@ -10,8 +10,8 @@ steps and projects them into a target feature space.
 
 import torch
 import torch.nn as nn
-from modules.spatial.graph_conv import GraphConv
-from layers.projection import ChannelProjection
+from modules import GraphConv
+from layers import ChannelProjection
 
 
 class GraphDiffusion(nn.Module):

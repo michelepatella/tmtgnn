@@ -10,10 +10,16 @@ graph diffusion layers and an adaptive graph structure learner.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from graph.graph_structure_learner import GraphStructureLearner
-from modules.temporal.transformer import Transformer
-from modules.spatial.graph_diffusion import GraphDiffusion
-from layers.normalization.layer_norm import LayerNorm
+import copy
+from graph import GraphStructureLearner
+from modules import Transformer
+from modules import GraphDiffusion
+from layers import LayerNorm
+from config import DiffusionConfig
+from config import GraphConfig
+from config import NormConfig
+from config import TMTGNNConfig
+from config import TransformerConfig
 
 
 class TMTGNN(nn.Module):
@@ -37,23 +43,11 @@ class TMTGNN(nn.Module):
         seq_length: int,
         out_channels: int,
         device: torch.device,
-        subgraph_size: int = 20,
-        node_dim: int = 40,
-        hidden_dim: int = 32,
-        skip_dim: int = 64,
-        head_dim: int = 128,
-        num_layers: int = 3,
-        gcn_depth: int = 2,
-        residual_alpha: float = 0.05,
-        dropout: float = 0.3,
-        graph_alpha: float = 3.0,
-        layer_norm_affine: bool = True,
-        graph_noise_scale: float = 0.01,
-        node_features: torch.Tensor | None = None,
-        num_heads: int = 4,
-        transformer_layers: int = 2,
-        layer_norm_eps: float = 1e-5,
-        projection_bias: bool = True,
+        diffusion_config: DiffusionConfig | None = None,
+        graph_config: GraphConfig | None = None,
+        norm_config: NormConfig | None = None,
+        tmtgnn_config: TMTGNNConfig | None = None,
+        transformer_config: TransformerConfig | None = None,
     ) -> None:
         """Initialize TMTGNN.
 
@@ -68,75 +62,53 @@ class TMTGNN(nn.Module):
                 Number of output channels.
             device (torch.device):
                 Computation device.
-            subgraph_size (int):
-                Number of outgoing edges per node in learned graph.
-                Default is 20.
-            node_dim (int):
-                Node embedding dimension used in graph learning.
-                Default is 40.
-            hidden_dim (int):
-                Hidden feature dimension.
-                Default is 32.
-            skip_dim (int):
-                Skip connection feature dimension.
-                Default is 64.
-            head_dim (int):
-                Head dimension before output projection.
-                Default is 128.
-            num_layers (int):
-                Number of spatio-temporal blocks.
-                Default is 3.
-            gcn_depth (int):
-                Number of diffusion steps in graph diffusion layers.
-                Default is 2.
-            residual_alpha (float):
-                Residual propagation coefficient.
-                Default is 0.05.
-            dropout (float):
-                Dropout rate.
-                Default is 0.3.
-            graph_alpha (float):
-                Scaling factor for graph learning non-linearity.
-                Default is 3.0.
-            layer_norm_affine (bool):
-                Whether LayerNorm uses learnable affine parameters.
-                Default is True.
-            graph_noise_scale (float):
-                Noise scale used during adjacency construction.
-                Default is 0.01.
-            node_features (torch.Tensor | None):
-                External node feature matrix used to condition graph construction.
+            diffusion_config (DiffusionConfig | None):
+                Configuration for graph diffusion layers.
                 Default is None.
-            num_heads (int):
-                Number of attention heads used in Transformer layers.
-                Default is 4.
-            transformer_layers (int):
-                Number of internal layers inside each Transformer block.
-                Default is 2.
-            layer_norm_eps (float):
-                Numerical stability epsilon used in the normalization layer.
-                Default is 1e-5.
-            projection_bias (bool):
-                Whether the projection layers inside graph diffusion use bias terms.
-                Default is True.
+            graph_config (GraphConfig | None):
+                Configuration for graph structure learning.
+                Default is None.
+            norm_config (NormConfig | None):
+                Configuration for normalization layers.
+                Default is None.
+            tmtgnn_config (TMTGNNConfig | None):
+                Configuration for TMTGNN model hyperparameters.
+                Default is None.
+            transformer_config (TransformerConfig | None):
+                Configuration for Transformer temporal modeling.
+                Default is None.
         """
         super().__init__()
 
+        diffusion_config = (
+            copy.deepcopy(diffusion_config) if diffusion_config else DiffusionConfig()
+        )
+        graph_config = copy.deepcopy(graph_config) if graph_config else GraphConfig()
+        norm_config = copy.deepcopy(norm_config) if norm_config else NormConfig()
+        tmtgnn_config = (
+            copy.deepcopy(tmtgnn_config) if tmtgnn_config else TMTGNNConfig()
+        )
+        transformer_config = (
+            copy.deepcopy(transformer_config)
+            if transformer_config
+            else TransformerConfig()
+        )
+
         self.num_nodes = num_nodes
         self.seq_length = seq_length
-        self.num_layers = num_layers
-        self.dropout = dropout
+        self.num_layers = tmtgnn_config.num_layers
+        self.dropout = tmtgnn_config.dropout
 
         # =========================================================
         # Graph Structure Learning
         # =========================================================
         self.graph_learner = GraphStructureLearner(
             num_nodes=num_nodes,
-            top_k=subgraph_size,
-            hidden_dim=node_dim,
-            alpha=graph_alpha,
-            noise_scale=graph_noise_scale,
-            node_features=node_features,
+            top_k=graph_config.subgraph_size,
+            hidden_dim=graph_config.node_dim,
+            alpha=graph_config.alpha,
+            noise_scale=graph_config.noise_scale,
+            node_features=graph_config.node_features,
         )
 
         # =========================================================
@@ -144,7 +116,7 @@ class TMTGNN(nn.Module):
         # =========================================================
         self.input_projection = nn.Conv2d(
             in_channels=in_channels,
-            out_channels=hidden_dim,
+            out_channels=tmtgnn_config.hidden_dim,
             kernel_size=(1, 1),
         )
 
@@ -156,46 +128,47 @@ class TMTGNN(nn.Module):
         self.diffusion_backward = nn.ModuleList()
         self.skip_projections = nn.ModuleList()
         self.normalization_layers = nn.ModuleList()
-        for _ in range(num_layers):
+
+        for _ in range(self.num_layers):
             self.temporal_layers.append(
                 Transformer(
-                    in_channels=hidden_dim,
-                    out_channels=hidden_dim,
-                    num_head=num_heads,
-                    num_layers=transformer_layers,
-                    dropout=dropout,
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.hidden_dim,
+                    num_head=transformer_config.num_heads,
+                    num_layers=transformer_config.num_layers,
+                    dropout=transformer_config.dropout,
                 )
             )
             self.diffusion_forward.append(
                 GraphDiffusion(
-                    in_channels=hidden_dim,
-                    out_channels=hidden_dim,
-                    diffusion_steps=gcn_depth,
-                    residual_alpha=residual_alpha,
-                    projection_bias=projection_bias,
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.hidden_dim,
+                    diffusion_steps=diffusion_config.gcn_depth,
+                    residual_alpha=diffusion_config.residual_alpha,
+                    projection_bias=diffusion_config.projection_bias,
                 )
             )
             self.diffusion_backward.append(
                 GraphDiffusion(
-                    in_channels=hidden_dim,
-                    out_channels=hidden_dim,
-                    diffusion_steps=gcn_depth,
-                    residual_alpha=residual_alpha,
-                    projection_bias=projection_bias,
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.hidden_dim,
+                    diffusion_steps=diffusion_config.gcn_depth,
+                    residual_alpha=diffusion_config.residual_alpha,
+                    projection_bias=diffusion_config.projection_bias,
                 )
             )
             self.skip_projections.append(
                 nn.Conv2d(
-                    in_channels=hidden_dim,
-                    out_channels=skip_dim,
+                    in_channels=tmtgnn_config.hidden_dim,
+                    out_channels=tmtgnn_config.skip_dim,
                     kernel_size=(1, seq_length),
                 )
             )
             self.normalization_layers.append(
                 LayerNorm(
-                    (hidden_dim, num_nodes, seq_length),
-                    eps=layer_norm_eps,
-                    elementwise_affine=layer_norm_affine,
+                    (tmtgnn_config.hidden_dim, num_nodes, seq_length),
+                    eps=norm_config.eps,
+                    elementwise_affine=norm_config.affine,
                 )
             )
 
@@ -203,15 +176,16 @@ class TMTGNN(nn.Module):
         # Output Head
         # =========================================================
         self.head_1 = nn.Conv2d(
-            in_channels=skip_dim,
-            out_channels=head_dim,
+            in_channels=tmtgnn_config.skip_dim,
+            out_channels=tmtgnn_config.head_dim,
             kernel_size=(1, 1),
         )
         self.head_2 = nn.Conv2d(
-            in_channels=head_dim,
+            in_channels=tmtgnn_config.head_dim,
             out_channels=out_channels,
             kernel_size=(1, 1),
         )
+
         self.idx = torch.arange(self.num_nodes).to(device)
 
     def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
