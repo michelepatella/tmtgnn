@@ -69,8 +69,8 @@ class LayerNorm(nn.Module):
 
         Args:
             x (torch.Tensor):
-                Input tensor of shape (n, c, v, l), where:
-                    - n: batch size
+                Input tensor of shape (b, c, v, l), where:
+                    - b: batch size
                     - c: number of channels
                     - v: number of nodes
                     - l: sequence length
@@ -81,8 +81,8 @@ class LayerNorm(nn.Module):
 
         Returns:
             torch.Tensor:
-                Normalized tensor of shape (n, c, v, l), where:
-                    - n: batch size (same as input)
+                Normalized tensor of shape (b, c, v, l), where:
+                    - b: batch size (same as input)
                     - c: number of channels (same as input)
                     - v: number of nodes (same as input)
                     - l: sequence length (same as input)
