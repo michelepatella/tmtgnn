@@ -28,7 +28,12 @@ class TMTGNNConfig:
             Default is 3.
         dropout (float):
             Dropout rate applied to the model's layers.
-            Default is 0.
+            Default is 0.3.
+        num_forecast_steps (int):
+            Number of future time steps to predict.
+            Set to 1 for single-step (next-step/next-close) forecasting.
+            Set to > 1 for multi-horizon forecasting.
+            Default is 1.
     """
 
     hidden_dim: int = 32
@@ -36,6 +41,7 @@ class TMTGNNConfig:
     head_dim: int = 128
     num_layers: int = 3
     dropout: float = 0.3
+    num_forecast_steps: int = 1
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization."""
@@ -55,3 +61,6 @@ class TMTGNNConfig:
 
         assert isinstance(self.dropout, float), "dropout must be float"
         assert 0.0 <= self.dropout <= 1.0, "dropout must be in [0.0, 1.0]"
+
+        assert isinstance(self.num_forecast_steps, int), "num_forecast_steps must be int"
+        assert self.num_forecast_steps > 0, "num_forecast_steps must be > 0"
