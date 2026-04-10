@@ -23,11 +23,16 @@ class TransformerConfig:
         dropout (float):
             Dropout rate used in Transformer layers.
             Default is 0.3.
+        max_sequence_length (int):
+            Maximum sequence length for positional encoding.
+            This should match or exceed the longest input sequence expected.
+            Default is 5000.
     """
 
     num_heads: int = 4
     num_layers: int = 2
     dropout: float = 0.3
+    max_sequence_length: int = 5000
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization."""
@@ -39,3 +44,6 @@ class TransformerConfig:
 
         assert isinstance(self.dropout, float), "dropout must be float"
         assert 0.0 <= self.dropout <= 1.0, "dropout must be in [0, 1]"
+
+        assert isinstance(self.max_sequence_length, int), "max_sequence_length must be int"
+        assert self.max_sequence_length > 0, "max_sequence_length must be > 0"
