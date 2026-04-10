@@ -101,6 +101,7 @@ class TMTGNN(nn.Module):
         self.seq_length = seq_length
         self.num_layers = tmtgnn_config.num_layers
         self.dropout = tmtgnn_config.dropout
+        self.num_forecast_steps = tmtgnn_config.num_forecast_steps
         self.node_repr_prev = None
         self.ema_alpha = graph_config.ema_alpha
 
@@ -231,11 +232,17 @@ class TMTGNN(nn.Module):
         """Compute forward pass of TMTGNN.
 
         Performs spatio-temporal modeling in the following pipeline:
-        (1) Learns a dynamic graph from node embeddings
-        (2) Applies temporal attention via Transformer layers
-        (3) Performs bidirectional graph diffusion for spatial propagation
-        (4) Aggregates multi-layer skip connections
-        (5) Produces final predictions via output projection
+        (1) Projects input to hidden dimension
+        (2) For each spatio-temporal block:
+            a. Applies temporal Transformer to enrich temporal representations
+            b. First layer learns graph structure from temporally-enriched node embeddings
+            c. Applies bidirectional graph diffusion for spatial propagation
+            d. Aggregates multi-layer skip connections
+            e. Applies residual connections and normalization
+        (3) Produces final predictions via output projection
+
+        The key insight is that temporal encoding happens before graph learning,
+        so the graph is constructed from nodes that have seen the full temporal history.
 
         Args:
             x (torch.Tensor):
@@ -250,49 +257,54 @@ class TMTGNN(nn.Module):
 
         Returns:
             torch.Tensor:
-                Output tensor containing the prediction at the last time step:
-                    - (b, c_out, v) if out_channels > 1
-                    - (b, v) if out_channels == 1
+                Output tensor for predictions:
+                    Single-step (num_forecast_steps == 1):
+                        - (b, c_out, v) if out_channels > 1
+                        - (b, v) if out_channels == 1
+                    Multi-horizon (num_forecast_steps > 1):
+                        - (b, num_forecast_steps, v, c_out) if out_channels > 1
+                        - (b, num_forecast_steps, v) if out_channels == 1
         """                
         node_idx = idx if idx is not None else self.idx
 
         x = self.input_projection(x)
 
-        h = x[:, :, :, -1]
-        h = h.permute(0, 2, 1)
-
-        emb = self.node_embedding(node_idx)
-        emb = emb.unsqueeze(0).expand(h.size(0), -1, -1)
-
-        node_repr = h + emb
-
-        if self.node_feat_proj is not None:
-            feat = self.graph_learner.node_features[node_idx]
-            feat = self.node_feat_proj(feat)
-            feat = feat.unsqueeze(0).expand(h.size(0), -1, -1)
-            node_repr = node_repr + feat
-
-        node_repr_mean = node_repr.mean(dim=0)
-        if self.node_repr_prev is not None:
-            node_repr_mean = (
-                self.ema_alpha * node_repr_mean +
-                (1 - self.ema_alpha) * self.node_repr_prev
-            )
-
-        self.node_repr_prev = node_repr_mean.detach()
-        node_repr = node_repr + node_repr_mean.unsqueeze(0)
-
-        adj = torch.stack(
-            [self.graph_learner(nr) for nr in node_repr],
-            dim=0
-        )
-
         skip = None
+        adj = None
 
         for i in range(self.num_layers):
             residual = x
-
             x = self.temporal_layers[i](x)
+
+            if i == 0:
+                h = x.mean(dim=-1)
+                h = h.permute(0, 2, 1)
+
+                emb = self.node_embedding(node_idx)
+                emb = emb.unsqueeze(0).expand(h.size(0), -1, -1)
+
+                node_repr = h + emb
+
+                if self.node_feat_proj is not None:
+                    feat = self.graph_learner.node_features[node_idx]
+                    feat = self.node_feat_proj(feat)
+                    feat = feat.unsqueeze(0).expand(h.size(0), -1, -1)
+                    node_repr = node_repr + feat
+
+                node_repr_mean = node_repr.mean(dim=0)
+                if self.node_repr_prev is not None:
+                    node_repr_mean = (
+                        self.ema_alpha * node_repr_mean +
+                        (1 - self.ema_alpha) * self.node_repr_prev
+                    )
+
+                self.node_repr_prev = node_repr_mean.detach()
+                node_repr = node_repr + node_repr_mean.unsqueeze(0)
+
+                adj = torch.stack(
+                    [self.graph_learner(nr) for nr in node_repr],
+                    dim=0
+                )
 
             x = self.diffusion_forward[i](x, adj) + self.diffusion_backward[i](
                 x, adj.transpose(-1, -2)
@@ -308,9 +320,15 @@ class TMTGNN(nn.Module):
         x = self.head_1(skip)
         x = F.relu(x)
         x = self.head_2(x)
-        x = x[:, :, :, -1]
-
-        if x.size(1) == 1:
-            x = x[:, 0]
+        
+        if self.num_forecast_steps == 1:
+            x = x[:, :, :, -1]
+            if x.size(1) == 1:
+                x = x[:, 0]
+        else:
+            x = x[:, :, :, -self.num_forecast_steps:]
+            x = x.permute(0, 3, 2, 1).contiguous()
+            if x.size(3) == 1:
+                x = x[:, :, :, 0]
 
         return x
