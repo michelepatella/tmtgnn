@@ -24,9 +24,6 @@ class GraphConfig:
         noise_scale (float):
             Noise scale used during adjacency construction.
             Default is 0.01.
-        node_features (torch.Tensor | None):
-            External node feature matrix used to condition graph
-            construction. Default is None.
         ema_alpha (float):
             Exponential moving average factor.
             Default is 0.8.
@@ -35,7 +32,6 @@ class GraphConfig:
     top_k: int = 20
     alpha: float = 3.0
     noise_scale: float = 0.01
-    node_features: torch.Tensor | None = None
     ema_alpha: float = 0.8
 
     def __post_init__(self) -> None:
@@ -44,10 +40,6 @@ class GraphConfig:
             assert isinstance(self.top_k, int), "top_k must be int"
             assert isinstance(self.alpha, float), "alpha must be float"
             assert isinstance(self.noise_scale, float), "noise_scale must be float"
-            if self.node_features is not None:
-                assert isinstance(self.node_features, torch.Tensor), (
-                    "node_features must be torch.Tensor"
-                )
             assert isinstance(self.ema_alpha, float), "ema_alpha must be float"
         except AssertionError as e:
             raise TypeError(f"Invalid GraphConfig parameter: {e}")
@@ -56,10 +48,6 @@ class GraphConfig:
             assert self.top_k > 0, "top_k must be > 0"
             assert self.alpha > 0.0, "alpha must be > 0"
             assert self.noise_scale >= 0.0, "noise_scale must be >= 0"
-            if self.node_features is not None:
-                assert self.node_features.dim() == 2, (
-                    "node_features must be [num_nodes, feat_dim]"
-                )
             assert 0.0 <= self.ema_alpha <= 1.0, "ema_alpha must be in [0, 1]"
         except AssertionError as e:
             raise ValueError(f"Invalid GraphConfig parameter: {e}")

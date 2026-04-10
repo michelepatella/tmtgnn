@@ -77,6 +77,7 @@ class TMTGNN(nn.Module):
             transformer_config (TransformerConfig | None):
                 Configuration for Transformer temporal modeling.
                 Default is None.
+
         """
         super().__init__()
 
@@ -105,14 +106,7 @@ class TMTGNN(nn.Module):
         self.node_repr_prev = None
         self.ema_alpha = graph_config.ema_alpha
 
-        self.node_embedding = nn.Embedding(num_nodes, tmtgnn_config.hidden_dim)
-        if graph_config.node_features is not None:
-            self.node_feat_proj = nn.Linear(
-                graph_config.node_features.shape[1],
-                tmtgnn_config.hidden_dim
-            )
-        else:
-            self.node_feat_proj = None
+        self.node_emb_layer = nn.Embedding(num_nodes, tmtgnn_config.hidden_dim)
         
         # =========================================================
         # Configuration Validations
@@ -148,7 +142,6 @@ class TMTGNN(nn.Module):
             hidden_dim=tmtgnn_config.hidden_dim,
             alpha=graph_config.alpha,
             noise_scale=graph_config.noise_scale,
-            node_features=graph_config.node_features,
         )
 
         # =========================================================
@@ -281,16 +274,10 @@ class TMTGNN(nn.Module):
                 h = x.mean(dim=-1)
                 h = h.permute(0, 2, 1)
 
-                emb = self.node_embedding(node_idx)
-                emb = emb.unsqueeze(0).expand(h.size(0), -1, -1)
+                node_emb = self.node_emb_layer(node_idx)
+                node_emb = node_emb.unsqueeze(0).expand(h.size(0), -1, -1)
 
-                node_repr = h + emb
-
-                if self.node_feat_proj is not None:
-                    feat = self.graph_learner.node_features[node_idx]
-                    feat = self.node_feat_proj(feat)
-                    feat = feat.unsqueeze(0).expand(h.size(0), -1, -1)
-                    node_repr = node_repr + feat
+                node_repr = h + node_emb
 
                 node_repr_mean = node_repr.mean(dim=0)
                 if self.node_repr_prev is not None:

@@ -2,10 +2,10 @@
 
 Graph structure learning module.
 
-Provides the `GraphStructureLearner` class, which learns a
-task-adaptive adjacency matrix from node embeddings or static
-node features. The learned graph is sparsified using top-k
-selection to enforce locality and reduce noise.
+Provides the `GraphStructureLearner` class, which learns an
+adjacency matrix from node embeddings. The learned graph
+is sparsified using top-k selection to enforce locality
+and reduce noise.
 """
 
 import torch
@@ -15,9 +15,9 @@ import torch.nn as nn
 class GraphStructureLearner(nn.Module):
     """Graph structure learning module.
 
-    Learns a directed adjacency matrix from node embeddings or
-    static node features, producing a sparse graph via top-k
-    selection, enabling adaptive structure construction.
+    Learns a directed adjacency matrix from node embeddings,
+    producing a sparse graph via top-k selection, enabling
+    adaptive structure construction.
 
     Notes:
         - Operates on external node representations provided at runtime
@@ -30,9 +30,8 @@ class GraphStructureLearner(nn.Module):
         num_nodes: int,
         top_k: int,
         hidden_dim: int,
-        alpha: float = 3.0,
-        noise_scale: float = 0.01,
-        node_features: torch.Tensor | None = None,
+        alpha: float,
+        noise_scale: float
     ) -> None:
         """Initialize GraphStructureLearner.
 
@@ -44,13 +43,9 @@ class GraphStructureLearner(nn.Module):
             hidden_dim (int):
                 Embedding dimension.
             alpha (float):
-                Scaling factor for non-linearity sharpness. Default is 3.0.
+                Scaling factor for non-linearity sharpness.
             noise_scale (float):
                 Scale of random noise added to adjacency scores for stability.
-                Default is 0.01.
-            node_features (torch.Tensor | None):
-                Precomputed node features of shape (num_nodes, feature_dim).
-                Default is None.
         """
         super().__init__()
 
@@ -59,11 +54,6 @@ class GraphStructureLearner(nn.Module):
         self.hidden_dim = hidden_dim
         self.alpha = alpha
         self.noise_scale = noise_scale
-
-        if node_features is not None:
-            self.register_buffer("node_features", node_features)
-        else:
-            self.node_features = None
 
         self.src_encoder = nn.Linear(hidden_dim, hidden_dim)
         self.dst_encoder = nn.Linear(hidden_dim, hidden_dim)
