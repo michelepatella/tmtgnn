@@ -12,6 +12,7 @@ explicit convolutional inductive bias.
 
 import torch
 import torch.nn as nn
+from positional_encoding import PositionalEncoding
 
 
 class Transformer(nn.Module):
@@ -24,8 +25,9 @@ class Transformer(nn.Module):
     Transformer is then applied across all nodes.
 
     Notes:
-        - No explicit interaction between nodes is modeled in this module
+        - Temporal order is encoded via sinusoidal positional encoding
         - Temporal dependencies are learned independently per node
+        - Positional encoding enables the model to explicitly model temporal relationships
     """
 
     def __init__(
@@ -35,6 +37,7 @@ class Transformer(nn.Module):
         num_head: int = 4,
         num_layers: int = 2,
         dropout: float = 0.3,
+        max_sequence_length: int = 5000,
     ) -> None:
         """Initialize Transformer.
 
@@ -52,6 +55,9 @@ class Transformer(nn.Module):
             dropout (float):
                 Dropout rate used inside Transformer layers.
                 Default is 0.3.
+            max_sequence_length (int):
+                Maximum sequence length for positional encoding.
+                Default is 5000.
         """
         super().__init__()
 
@@ -62,6 +68,11 @@ class Transformer(nn.Module):
             nn.Linear(in_channels, out_channels)
             if in_channels != out_channels
             else nn.Identity()
+        )
+
+        self.positional_encoding = PositionalEncoding(
+            d_model=out_channels,
+            max_len=max_sequence_length,
         )
 
         encoder_layer = nn.TransformerEncoderLayer(
@@ -81,8 +92,9 @@ class Transformer(nn.Module):
 
         Applies self-attention over the temporal dimension for each node
         independently. The input is reshaped so that each node is treated
-        as a separate temporal sequence, and a shared Transformer encoder
-        is applied across all nodes.
+        as a separate temporal sequence, a projection is applied, positional
+        encoding is added, and a shared Transformer encoder is applied across
+        all nodes.
 
         Args:
             x (torch.Tensor):
@@ -106,6 +118,7 @@ class Transformer(nn.Module):
         x = x.view(n * v, l, c)
 
         x = self.projection(x)
+        x = self.positional_encoding(x)
         x = self.transformer(x)
 
         x = x.view(n, v, l, self.out_channels)

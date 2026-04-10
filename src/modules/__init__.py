@@ -1,4 +1,4 @@
-from .spatial import GraphConv, GraphDiffusion
-from .temporal import Transformer
+from .spatial import GraphDiffusion, GraphConv
+from .temporal import Transformer, PositionalEncoding
 
-__all__ = ["GraphConv", "GraphDiffusion", "Transformer"]
+__all__ = ["GraphDiffusion", "GraphConv", "Transformer", "PositionalEncoding"]

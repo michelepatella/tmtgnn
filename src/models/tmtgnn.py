@@ -177,6 +177,7 @@ class TMTGNN(nn.Module):
                     num_head=transformer_config.num_heads,
                     num_layers=transformer_config.num_layers,
                     dropout=transformer_config.dropout,
+                    max_sequence_length=transformer_config.max_sequence_length,
                 )
             )
             self.diffusion_forward.append(

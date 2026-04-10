@@ -10,7 +10,7 @@ steps and projects them into a target feature space.
 
 import torch
 import torch.nn as nn
-from .graph_conv import GraphConv
+from spatial import GraphConv
 from layers import ChannelProjection
 
 
@@ -98,7 +98,7 @@ class GraphDiffusion(nn.Module):
         adj = adj + eye
 
         degree = adj.sum(dim=-1, keepdim=True)
-        normalized_adj = adj / (degree + 1e-8)
+        normalized_adj = adj / degree
 
         hidden = x
         diffusion_states = [hidden]
