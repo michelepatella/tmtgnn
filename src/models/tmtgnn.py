@@ -98,14 +98,11 @@ class TMTGNN(nn.Module):
             else TransformerConfig()
         )
 
-        self.num_nodes = num_nodes
-        self.seq_length = seq_length
         self.num_layers = tmtgnn_config.num_layers
         self.dropout = tmtgnn_config.dropout
         self.num_forecast_steps = tmtgnn_config.num_forecast_steps
         self.node_repr_prev = None
         self.ema_alpha = graph_config.ema_alpha
-
         self.node_emb_layer = nn.Embedding(num_nodes, tmtgnn_config.hidden_dim)
         
         # =========================================================
@@ -117,7 +114,7 @@ class TMTGNN(nn.Module):
         assert tmtgnn_config.hidden_dim >= transformer_config.num_heads, (
             "hidden_dim must be >= num_heads"
         )
-        assert 0 < graph_config.top_k < self.num_nodes, "top_k must be in (0, num_nodes)"
+        assert 0 < graph_config.top_k < num_nodes, "top_k must be in (0, num_nodes)"
 
         assert num_nodes > 0, "num_nodes must be > 0"
         assert isinstance(num_nodes, int), "num_nodes must be an int"
@@ -137,10 +134,9 @@ class TMTGNN(nn.Module):
         # Graph Structure Learning
         # =========================================================
         self.graph_learner = GraphStructureLearner(
-            num_nodes=num_nodes,
             top_k=graph_config.top_k,
             hidden_dim=tmtgnn_config.hidden_dim,
-            alpha=graph_config.alpha,
+            sigmoid_alpha=graph_config.sigmoid_alpha,
             noise_scale=graph_config.noise_scale,
         )
 
@@ -177,7 +173,7 @@ class TMTGNN(nn.Module):
                 GraphDiffusion(
                     in_channels=tmtgnn_config.hidden_dim,
                     out_channels=tmtgnn_config.hidden_dim,
-                    diffusion_steps=diffusion_config.gcn_depth,
+                    diffusion_steps=diffusion_config.diffusion_steps,
                     residual_alpha=diffusion_config.residual_alpha,
                     projection_bias=diffusion_config.projection_bias,
                 )
@@ -186,7 +182,7 @@ class TMTGNN(nn.Module):
                 GraphDiffusion(
                     in_channels=tmtgnn_config.hidden_dim,
                     out_channels=tmtgnn_config.hidden_dim,
-                    diffusion_steps=diffusion_config.gcn_depth,
+                    diffusion_steps=diffusion_config.diffusion_steps,
                     residual_alpha=diffusion_config.residual_alpha,
                     projection_bias=diffusion_config.projection_bias,
                 )
@@ -202,7 +198,7 @@ class TMTGNN(nn.Module):
                 LayerNorm(
                     (tmtgnn_config.hidden_dim, num_nodes, seq_length),
                     eps=norm_config.eps,
-                    elementwise_affine=norm_config.affine,
+                    elementwise_affine=norm_config.elementwise_affine,
                 )
             )
 
@@ -220,7 +216,7 @@ class TMTGNN(nn.Module):
             kernel_size=(1, 1),
         )
         
-        self.register_buffer("idx", torch.arange(self.num_nodes, device=device))
+        self.register_buffer("idx", torch.arange(num_nodes, device=device))
 
     def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
         """Compute forward pass of TMTGNN.

@@ -27,7 +27,6 @@ class GraphStructureLearner(nn.Module):
 
     def __init__(
         self,
-        num_nodes: int,
         top_k: int,
         hidden_dim: int,
         sigmoid_alpha: float,
@@ -36,8 +35,6 @@ class GraphStructureLearner(nn.Module):
         """Initialize GraphStructureLearner.
 
         Args:
-            num_nodes (int):
-                Number of nodes in the graph.
             top_k (int):
                 Number of outgoing edges per node (top-k sparsification).
             hidden_dim (int):
@@ -49,7 +46,6 @@ class GraphStructureLearner(nn.Module):
         """
         super().__init__()
 
-        self.num_nodes = num_nodes
         self.top_k = top_k
         self.hidden_dim = hidden_dim
         self.sigmoid_alpha = sigmoid_alpha
