@@ -30,7 +30,7 @@ class GraphStructureLearner(nn.Module):
         num_nodes: int,
         top_k: int,
         hidden_dim: int,
-        alpha: float,
+        sigmoid_alpha: float,
         noise_scale: float
     ) -> None:
         """Initialize GraphStructureLearner.
@@ -42,8 +42,8 @@ class GraphStructureLearner(nn.Module):
                 Number of outgoing edges per node (top-k sparsification).
             hidden_dim (int):
                 Embedding dimension.
-            alpha (float):
-                Scaling factor for non-linearity sharpness.
+            sigmoid_alpha (float):
+                Scaling factor for sigmoid non-linearity sharpness.
             noise_scale (float):
                 Scale of random noise added to adjacency scores for stability.
         """
@@ -52,7 +52,7 @@ class GraphStructureLearner(nn.Module):
         self.num_nodes = num_nodes
         self.top_k = top_k
         self.hidden_dim = hidden_dim
-        self.alpha = alpha
+        self.sigmoid_alpha = sigmoid_alpha
         self.noise_scale = noise_scale
 
         self.src_encoder = nn.Linear(hidden_dim, hidden_dim)
@@ -93,7 +93,7 @@ class GraphStructureLearner(nn.Module):
 
         score = torch.mm(node_src, node_dst.t()) - torch.mm(node_dst, node_src.t())
 
-        adj = torch.sigmoid(self.alpha * score)
+        adj = torch.sigmoid(self.sigmoid_alpha * score)
 
         if self.training and self.noise_scale > 0.0:
             adj_for_topk = adj + torch.rand_like(adj) * self.noise_scale

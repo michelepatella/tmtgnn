@@ -6,7 +6,6 @@ Provides the `GraphConfig` class, which implements configuration
 for graph structure learning.
 """
 
-import torch
 from dataclasses import dataclass
 
 
@@ -18,8 +17,8 @@ class GraphConfig:
         top_k (int):
             Number of outgoing edges per node in learned graph.
             Default is 20.
-        alpha (float):
-            Scaling factor for graph learning non-linearity.
+        sigmoid_alpha (float):
+            Scaling factor for sigmoid non-linearity sharpness.
             Default is 3.0.
         noise_scale (float):
             Noise scale used during adjacency construction.
@@ -30,7 +29,7 @@ class GraphConfig:
     """
 
     top_k: int = 20
-    alpha: float = 3.0
+    sigmoid_alpha: float = 3.0
     noise_scale: float = 0.01
     ema_alpha: float = 0.8
 
@@ -38,7 +37,7 @@ class GraphConfig:
         """Validates the configuration parameters after initialization."""
         try:
             assert isinstance(self.top_k, int), "top_k must be int"
-            assert isinstance(self.alpha, float), "alpha must be float"
+            assert isinstance(self.sigmoid_alpha, float), "sigmoid_alpha must be float"
             assert isinstance(self.noise_scale, float), "noise_scale must be float"
             assert isinstance(self.ema_alpha, float), "ema_alpha must be float"
         except AssertionError as e:
@@ -46,7 +45,7 @@ class GraphConfig:
         
         try:
             assert self.top_k > 0, "top_k must be > 0"
-            assert self.alpha > 0.0, "alpha must be > 0"
+            assert self.sigmoid_alpha > 0.0, "sigmoid_alpha must be > 0"
             assert self.noise_scale >= 0.0, "noise_scale must be >= 0"
             assert 0.0 <= self.ema_alpha <= 1.0, "ema_alpha must be in [0, 1]"
         except AssertionError as e:
