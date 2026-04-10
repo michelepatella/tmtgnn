@@ -12,7 +12,7 @@ explicit convolutional inductive bias.
 
 import torch
 import torch.nn as nn
-from positional_encoding import PositionalEncoding
+from .positional_encoding import PositionalEncoding
 
 
 class Transformer(nn.Module):
