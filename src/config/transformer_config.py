@@ -25,7 +25,6 @@ class TransformerConfig:
             Default is 0.3.
         max_sequence_length (int):
             Maximum sequence length for positional encoding.
-            This should match or exceed the longest input sequence expected.
             Default is 5000.
     """
 
@@ -36,14 +35,18 @@ class TransformerConfig:
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization."""
-        assert isinstance(self.num_heads, int), "num_heads must be int"
-        assert self.num_heads > 0, "num_heads must be > 0"
+        try:
+            assert isinstance(self.num_heads, int), "num_heads must be int"
+            assert isinstance(self.num_layers, int), "num_layers must be int"
+            assert isinstance(self.dropout, float), "dropout must be float"
+            assert isinstance(self.max_sequence_length, int), "max_sequence_length must be int"
+        except AssertionError as e:
+            raise TypeError(f"Invalid TransformerConfig parameter: {e}")
 
-        assert isinstance(self.num_layers, int), "num_layers must be int"
-        assert self.num_layers > 0, "num_layers must be > 0"
-
-        assert isinstance(self.dropout, float), "dropout must be float"
-        assert 0.0 <= self.dropout <= 1.0, "dropout must be in [0, 1]"
-
-        assert isinstance(self.max_sequence_length, int), "max_sequence_length must be int"
-        assert self.max_sequence_length > 0, "max_sequence_length must be > 0"
+        try:
+            assert self.num_heads > 0, "num_heads must be > 0"
+            assert self.num_layers > 0, "num_layers must be > 0"
+            assert 0.0 <= self.dropout <= 1.0, "dropout must be in [0, 1]"
+            assert self.max_sequence_length > 0, "max_sequence_length must be > 0"
+        except AssertionError as e:
+            raise ValueError(f"Invalid TransformerConfig parameter: {e}")

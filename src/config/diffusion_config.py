@@ -31,10 +31,15 @@ class DiffusionConfig:
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization."""
-        assert isinstance(self.gcn_depth, int), "gcn_depth must be int"
-        assert self.gcn_depth > 0, "gcn_depth must be > 0"
+        try:
+            assert isinstance(self.gcn_depth, int), "gcn_depth must be int"
+            assert isinstance(self.residual_alpha, float), "residual_alpha must be float"
+            assert isinstance(self.projection_bias, bool), "projection_bias must be bool"
+        except AssertionError as e:
+            raise TypeError(f"Invalid DiffusionConfig parameter: {e}")
 
-        assert isinstance(self.residual_alpha, float), "residual_alpha must be float"
-        assert 0.0 <= self.residual_alpha <= 1.0, "residual_alpha must be in [0, 1]"
-
-        assert isinstance(self.projection_bias, bool), "projection_bias must be bool"
+        try:
+            assert self.gcn_depth > 0, "gcn_depth must be > 0"
+            assert 0.0 <= self.residual_alpha <= 1.0, "residual_alpha must be in [0, 1]"
+        except AssertionError as e:
+            raise ValueError(f"Invalid DiffusionConfig parameter: {e}")

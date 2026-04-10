@@ -28,7 +28,7 @@ class GraphConfig:
             External node feature matrix used to condition graph
             construction. Default is None.
         ema_alpha (float):
-            Exponential moving average factor for learned adjacency.
+            Exponential moving average factor.
             Default is 0.8.
     """
 
@@ -40,22 +40,26 @@ class GraphConfig:
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization."""
-        assert isinstance(self.top_k, int), "top_k must be int"
-        assert self.top_k > 0, "top_k must be > 0"
-
-        assert isinstance(self.alpha, float), "alpha must be float"
-        assert self.alpha > 0.0, "alpha must be > 0"
-
-        assert isinstance(self.noise_scale, float), "noise_scale must be float"
-        assert self.noise_scale >= 0.0, "noise_scale must be >= 0"
-
-        if self.node_features is not None:
-            assert isinstance(self.node_features, torch.Tensor), (
-                "node_features must be torch.Tensor"
-            )
-            assert self.node_features.dim() == 2, (
-                "node_features must be [num_nodes, feat_dim]"
-            )
-
-        assert isinstance(self.ema_alpha, float), "ema_alpha must be float"
-        assert 0.0 <= self.ema_alpha <= 1.0, "ema_alpha must be in [0, 1]"
+        try:
+            assert isinstance(self.top_k, int), "top_k must be int"
+            assert isinstance(self.alpha, float), "alpha must be float"
+            assert isinstance(self.noise_scale, float), "noise_scale must be float"
+            if self.node_features is not None:
+                assert isinstance(self.node_features, torch.Tensor), (
+                    "node_features must be torch.Tensor"
+                )
+            assert isinstance(self.ema_alpha, float), "ema_alpha must be float"
+        except AssertionError as e:
+            raise TypeError(f"Invalid GraphConfig parameter: {e}")
+        
+        try:
+            assert self.top_k > 0, "top_k must be > 0"
+            assert self.alpha > 0.0, "alpha must be > 0"
+            assert self.noise_scale >= 0.0, "noise_scale must be >= 0"
+            if self.node_features is not None:
+                assert self.node_features.dim() == 2, (
+                    "node_features must be [num_nodes, feat_dim]"
+                )
+            assert 0.0 <= self.ema_alpha <= 1.0, "ema_alpha must be in [0, 1]"
+        except AssertionError as e:
+            raise ValueError(f"Invalid GraphConfig parameter: {e}")
