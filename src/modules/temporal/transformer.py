@@ -71,8 +71,8 @@ class Transformer(nn.Module):
         )
 
         self.positional_encoding = PositionalEncoding(
-            d_model=out_channels,
-            max_len=max_sequence_length,
+            hidden_dim=out_channels,
+            max_sequence_length=max_sequence_length,
         )
 
         encoder_layer = nn.TransformerEncoderLayer(

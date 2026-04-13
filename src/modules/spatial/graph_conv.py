@@ -21,8 +21,7 @@ class GraphConv(nn.Module):
     """
 
     def __init__(self) -> None:
-        """Initialize GraphConv layer.
-        """
+        """Initialize GraphConv layer."""
         super().__init__()
 
     def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
@@ -56,8 +55,8 @@ class GraphConv(nn.Module):
                     - m: number of target nodes
                     - l: sequence length (same as input)
         """
-        # Normalize adjacency to batch format (b, n, m) by 
-        # adding batch dimension if input is 2D static adjacency, 
+        # Normalize adjacency to batch format (b, n, m) by
+        # adding batch dimension if input is 2D static adjacency,
         # enabling unified einsum computation
         if adj.dim() == 2:
             adj = adj.unsqueeze(0)

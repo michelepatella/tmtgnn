@@ -123,17 +123,17 @@ class GraphDiffusion(nn.Module):
         for _ in range(self.diffusion_steps):
             # Aggregate features from neighbors via message passing
             agg = self.graph_conv(hidden, normalized_adj)
-            
+
             # Mix original input with aggregated features using residual_alpha
             # to prevent feature smoothing while spreading information
             hidden = self.residual_alpha * x + (1 - self.residual_alpha) * agg
             diffusion_states.append(hidden)
 
-        # Concatenate all K+1 states (input + K diffusion outputs) along 
+        # Concatenate all K+1 states (input + K diffusion outputs) along
         # channel dimension, creating multi-scale neighborhood representations
         # for the projection layer
         output = torch.cat(diffusion_states, dim=1)
-        
+
         # Project concatenated multi-step representations to target output dimensionality
         # via learnable 1x1 convolution for channel-wise feature selection
         output = self.projection(output)
