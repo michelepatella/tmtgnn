@@ -33,8 +33,12 @@ class DiffusionConfig:
         """Validates the configuration parameters after initialization."""
         try:
             assert isinstance(self.diffusion_steps, int), "diffusion_steps must be int"
-            assert isinstance(self.residual_alpha, float), "residual_alpha must be float"
-            assert isinstance(self.projection_bias, bool), "projection_bias must be bool"
+            assert isinstance(self.residual_alpha, float), (
+                "residual_alpha must be float"
+            )
+            assert isinstance(self.projection_bias, bool), (
+                "projection_bias must be bool"
+            )
         except AssertionError as e:
             raise TypeError(f"Invalid DiffusionConfig parameter: {e}")
 

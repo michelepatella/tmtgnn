@@ -3,7 +3,7 @@
 Layer normalization module.
 
 Provides the `LayerNorm` class, which applies layer normalization
-while supporting elementwise affine transformation and conditioning 
+while supporting elementwise affine transformation and conditioning
 the affine parameters on node indices.
 """
 
@@ -22,21 +22,18 @@ class LayerNorm(nn.Module):
     on individual node indices, enabling per-node normalization behavior.
 
     Attributes:
-        eps (float): 
+        eps (float):
             Small value added for numerical stability during normalization.
-        elementwise_affine (bool): 
+        elementwise_affine (bool):
             Whether to use learnable per-element affine parameters.
-        weight (nn.Parameter): 
+        weight (nn.Parameter):
             Learnable weight parameters for affine transformation, indexed by node.
-        bias (nn.Parameter): 
+        bias (nn.Parameter):
             Learnable bias parameters for affine transformation, indexed by node.
     """
 
     def __init__(
-        self,
-        normalized_shape: int | tuple,
-        eps: float,
-        elementwise_affine: bool
+        self, normalized_shape: int | tuple, eps: float, elementwise_affine: bool
     ) -> None:
         """Initialize LayerNorm module.
 
@@ -52,7 +49,7 @@ class LayerNorm(nn.Module):
         """
         super().__init__()
 
-        # Normalize shape to tuple format for consistent 
+        # Normalize shape to tuple format for consistent
         # parameter initialization
         if isinstance(normalized_shape, numbers.Integral):
             normalized_shape = (normalized_shape,)
@@ -61,12 +58,12 @@ class LayerNorm(nn.Module):
         self.elementwise_affine = elementwise_affine
 
         if self.elementwise_affine:
-            # Create learnable weight and bias parameters for affine 
+            # Create learnable weight and bias parameters for affine
             # transformation (these will be indexed per node in the forward pass)
             self.weight = nn.Parameter(torch.Tensor(*normalized_shape))
             self.bias = nn.Parameter(torch.Tensor(*normalized_shape))
 
-            # Initialize weight to ones and bias to zeros for identity mapping 
+            # Initialize weight to ones and bias to zeros for identity mapping
             # at start, allowing the model to learn offsets from this baseline
             nn.init.ones_(self.weight)
             nn.init.zeros_(self.bias)

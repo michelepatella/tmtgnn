@@ -45,7 +45,7 @@ class GraphConv(nn.Module):
                     - l: sequence length
 
             adj (torch.Tensor):
-                Adjacency matrix of shape (v, w) or (b, v, w), 
+                Adjacency matrix of shape (v, w) or (b, v, w),
                 representing graph connectivity.
                     - b: batch size
                     - v: number of source nodes

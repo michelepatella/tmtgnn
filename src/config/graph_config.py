@@ -42,7 +42,7 @@ class GraphConfig:
             assert isinstance(self.ema_alpha, float), "ema_alpha must be float"
         except AssertionError as e:
             raise TypeError(f"Invalid GraphConfig parameter: {e}")
-        
+
         try:
             assert self.top_k > 0, "top_k must be > 0"
             assert self.sigmoid_alpha > 0.0, "sigmoid_alpha must be > 0"

@@ -29,7 +29,9 @@ class NormConfig:
         """Validates the configuration parameters after initialization."""
         try:
             assert isinstance(self.eps, float), "eps must be float"
-            assert isinstance(self.elementwise_affine, bool), "elementwise_affine must be bool"
+            assert isinstance(self.elementwise_affine, bool), (
+                "elementwise_affine must be bool"
+            )
         except AssertionError as e:
             raise TypeError(f"Invalid NormConfig parameter: {e}")
 

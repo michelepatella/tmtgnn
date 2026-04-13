@@ -39,7 +39,9 @@ class TransformerConfig:
             assert isinstance(self.num_heads, int), "num_heads must be int"
             assert isinstance(self.num_layers, int), "num_layers must be int"
             assert isinstance(self.dropout, float), "dropout must be float"
-            assert isinstance(self.max_sequence_length, int), "max_sequence_length must be int"
+            assert isinstance(self.max_sequence_length, int), (
+                "max_sequence_length must be int"
+            )
         except AssertionError as e:
             raise TypeError(f"Invalid TransformerConfig parameter: {e}")
 

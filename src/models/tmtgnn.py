@@ -104,7 +104,7 @@ class TMTGNN(nn.Module):
         self.node_repr_prev = None
         self.ema_alpha = graph_config.ema_alpha
         self.node_emb_layer = nn.Embedding(num_nodes, tmtgnn_config.hidden_dim)
-        
+
         # =========================================================
         # Configuration Validations
         # =========================================================
@@ -191,7 +191,7 @@ class TMTGNN(nn.Module):
                 nn.Conv2d(
                     in_channels=tmtgnn_config.hidden_dim,
                     out_channels=tmtgnn_config.skip_dim,
-                    kernel_size=(1, 1)
+                    kernel_size=(1, 1),
                 )
             )
             self.normalization_layers.append(
@@ -215,7 +215,7 @@ class TMTGNN(nn.Module):
             out_channels=out_channels,
             kernel_size=(1, 1),
         )
-        
+
         self.register_buffer("idx", torch.arange(num_nodes, device=device))
 
     def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
@@ -254,7 +254,7 @@ class TMTGNN(nn.Module):
                     Multi-horizon (num_forecast_steps > 1):
                         - (b, num_forecast_steps, v, c_out) if out_channels > 1
                         - (b, num_forecast_steps, v) if out_channels == 1
-        """                
+        """
         node_idx = idx if idx is not None else self.idx
 
         x = self.input_projection(x)
@@ -278,17 +278,14 @@ class TMTGNN(nn.Module):
                 node_repr_mean = node_repr.mean(dim=0)
                 if self.node_repr_prev is not None:
                     node_repr_mean = (
-                        self.ema_alpha * node_repr_mean +
-                        (1 - self.ema_alpha) * self.node_repr_prev
+                        self.ema_alpha * node_repr_mean
+                        + (1 - self.ema_alpha) * self.node_repr_prev
                     )
 
                 self.node_repr_prev = node_repr_mean.detach()
                 node_repr = node_repr + node_repr_mean.unsqueeze(0)
 
-                adj = torch.stack(
-                    [self.graph_learner(nr) for nr in node_repr],
-                    dim=0
-                )
+                adj = torch.stack([self.graph_learner(nr) for nr in node_repr], dim=0)
 
             x = self.diffusion_forward[i](x, adj) + self.diffusion_backward[i](
                 x, adj.transpose(-1, -2)
@@ -304,13 +301,13 @@ class TMTGNN(nn.Module):
         x = self.head_1(skip)
         x = F.relu(x)
         x = self.head_2(x)
-        
+
         if self.num_forecast_steps == 1:
             x = x[:, :, :, -1]
             if x.size(1) == 1:
                 x = x[:, 0]
         else:
-            x = x[:, :, :, -self.num_forecast_steps:]
+            x = x[:, :, :, -self.num_forecast_steps :]
             x = x.permute(0, 3, 2, 1).contiguous()
             if x.size(3) == 1:
                 x = x[:, :, :, 0]

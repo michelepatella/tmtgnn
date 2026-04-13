@@ -49,10 +49,12 @@ class TMTGNNConfig:
             assert isinstance(self.head_dim, int), "head_dim must be int"
             assert isinstance(self.num_layers, int), "num_layers must be int"
             assert isinstance(self.dropout, float), "dropout must be float"
-            assert isinstance(self.num_forecast_steps, int), "num_forecast_steps must be int"
+            assert isinstance(self.num_forecast_steps, int), (
+                "num_forecast_steps must be int"
+            )
         except AssertionError as e:
             raise TypeError(f"Invalid TMTGNNConfig parameter: {e}")
-        
+
         try:
             assert self.hidden_dim > 0, "hidden_dim must be > 0"
             assert self.skip_dim > 0, "skip_dim must be > 0"

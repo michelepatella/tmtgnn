@@ -33,11 +33,7 @@ class GraphStructureLearner(nn.Module):
     """
 
     def __init__(
-        self,
-        top_k: int,
-        hidden_dim: int,
-        sigmoid_alpha: float,
-        noise_scale: float
+        self, top_k: int, hidden_dim: int, sigmoid_alpha: float, noise_scale: float
     ) -> None:
         """Initialize GraphStructureLearner.
 
@@ -92,7 +88,7 @@ class GraphStructureLearner(nn.Module):
         # Asymmetric interaction scores (directed influence,
         # how much node i influences node j vs. vice versa)
         score = torch.mm(node_src, node_dst.t()) - torch.mm(node_dst, node_src.t())
-        
+
         # Normalize scores to [0, 1]
         adj = torch.sigmoid(self.sigmoid_alpha * score)
 
@@ -103,11 +99,11 @@ class GraphStructureLearner(nn.Module):
             adj_for_topk = adj
 
         # Top-k sparsification per node to keep only the strongest
-        # connections (outgoing edges), making the graph sparse while 
+        # connections (outgoing edges), making the graph sparse while
         # focusing on learning relevant relationships only
         k = min(self.top_k, adj_for_topk.size(1))
         _, top_idx = adj_for_topk.topk(k, dim=1)
-        
+
         # Build sparse mask from top-k indices where
         # mask[i, j] = 1 if j is in top-k neighbors of i, else 0
         mask = torch.zeros_like(adj).scatter(1, top_idx, 1.0)
