@@ -16,65 +16,73 @@ from .positional_encoding import PositionalEncoding
 
 
 class Transformer(nn.Module):
-    """Transformer module.
+    """Transformer module for temporal self-attention modeling.
 
     Applies a Transformer encoder over the temporal dimension of each node
-    independently. The module replaces classical temporal convolution in
-    spatio-temporal graph neural networks. The input is first reshaped so
-    that each node is treated as an independent sequence over time. A shared
-    Transformer is then applied across all nodes.
+    independently, replacing classical temporal convolution in spatio-temporal
+    graph neural networks. Enables long-range temporal dependency modeling through
+    multi-head self-attention.
 
-    Notes:
-        - Temporal order is encoded via sinusoidal positional encoding
-        - Temporal dependencies are learned independently per node
-        - Positional encoding enables the model to explicitly model temporal relationships
+    Attributes:
+        out_channels (int):
+            Number of output feature channels.
+        projection (nn.Module):
+            Optional learnable linear projection to transform input channel
+            dimension to output dimension. Identity if dimensions match.
+        positional_encoding (PositionalEncoding):
+            Sinusoidal positional encoding to inject temporal order information.
+        transformer (nn.TransformerEncoder):
+            Stacked Transformer encoder layers for temporal self-attention.
     """
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        num_head: int = 4,
-        num_layers: int = 2,
-        dropout: float = 0.3,
-        max_sequence_length: int = 5000,
+        num_head: int,
+        num_layers: int,
+        dropout: float,
+        max_sequence_length: int,
     ) -> None:
         """Initialize Transformer.
 
         Args:
             in_channels (int):
-                Number of input feature channels.
+                Number of input feature channels before temporal modeling.
             out_channels (int):
-                Number of output feature channels.
+                Number of output feature channels after projection.
             num_head (int):
-                Number of attention heads in the Transformer encoder.
-                Default is 4.
+                Number of attention heads in the Transformer encoder,
+                controlling parallel attention subspace information.
             num_layers (int):
-                Number of stacked Transformer encoder layers.
-                Default is 2.
+                Number of stacked Transformer encoder layers, controlling
+                depth and receptive field over temporal dimension.
             dropout (float):
-                Dropout rate used inside Transformer layers.
-                Default is 0.3.
+                Dropout rate applied inside Transformer layers for regularization.
             max_sequence_length (int):
-                Maximum sequence length for positional encoding.
-                Default is 5000.
+                Maximum temporal sequence length to precompute positional encodings.
         """
         super().__init__()
 
-        self.in_channels = in_channels
         self.out_channels = out_channels
 
+        # Create optional learnable projection to transform input channels
+        # to output channels (if dimensions match, use identity to avoid
+        # unnecessary computation)
         self.projection = (
             nn.Linear(in_channels, out_channels)
             if in_channels != out_channels
             else nn.Identity()
         )
 
+        # Create positional encoding for temporal order information,
+        # enabling model to distinguish position in temporal sequences
         self.positional_encoding = PositionalEncoding(
             hidden_dim=out_channels,
             max_sequence_length=max_sequence_length,
         )
 
+        # Create single encoder layer with specified configuration
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=out_channels,
             nhead=num_head,
@@ -82,46 +90,61 @@ class Transformer(nn.Module):
             batch_first=True,
         )
 
+        # Stack multiple encoder layers to build hierarchical temporal
+        # representations, allowing model to learn multi-scale temporal patterns
         self.transformer = nn.TransformerEncoder(
             encoder_layer,
             num_layers=num_layers,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute temporal representation using Transformer encoder.
+        """Compute temporal representation via multi-head self-attention.
 
-        Applies self-attention over the temporal dimension for each node
-        independently. The input is reshaped so that each node is treated
-        as a separate temporal sequence, a projection is applied, positional
-        encoding is added, and a shared Transformer encoder is applied across
-        all nodes.
+        Applies Transformer encoder over the temporal dimension for each node
+        independently. Reshapes input so each node is treated as a separate
+        temporal sequence, applies projection and positional encoding, then
+        feeds through stacked Transformer layers for self-attention computation.
 
         Args:
             x (torch.Tensor):
-                Input feature map of shape (b, c, v, l), where:
+                Input feature map of shape (b, c, n, l), where:
                     - b: batch size
                     - c: number of input channels
-                    - v: number of nodes
+                    - n: number of nodes
                     - l: sequence length (temporal dimension)
 
         Returns:
             torch.Tensor:
-                Output feature map of shape (b, c_out, v, l), where:
+                Output feature map of shape (b, c_out, n, l), where:
                     - b: batch size (same as input)
                     - c_out: number of output channels
-                    - v: number of nodes (same as input)
+                    - n: number of nodes (same as input)
                     - l: sequence length (same as input)
         """
-        n, c, v, l = x.shape
+        # Extract dimensions
+        batch, channels, num_nodes, seq_length = x.shape
 
+        # Reshape for per-node temporal processing (this treats each node
+        # independently as a separate sequence for self-attention)
         x = x.permute(0, 2, 3, 1).contiguous()
-        x = x.view(n * v, l, c)
+        x = x.view(batch * num_nodes, seq_length, channels)
 
+        # Project input channels to output dimensionality 
+        # for consistent feature space
         x = self.projection(x)
+        
+        # Add sinusoidal positional encoding to inject temporal 
+        # position information, enabling model to distinguish and
+        # reason about position in temporal sequences
         x = self.positional_encoding(x)
+        
+        # Apply stacked Transformer encoder layers for multi-head self-attention,
+        # learning temporal dependencies and patterns across the sequence
         x = self.transformer(x)
 
-        x = x.view(n, v, l, self.out_channels)
+        # Reshape back to original node structure and
+        # restore original dimension order
+        x = x.view(batch, num_nodes, seq_length, self.out_channels)
         x = x.permute(0, 3, 1, 2).contiguous()
 
         return x
