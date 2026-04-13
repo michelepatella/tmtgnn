@@ -189,7 +189,7 @@ class TestTMTGNNInit:
                 seq_length=12,
                 out_channels=1,
                 device=torch.device("cpu"),
-                graph_config=GraphConfig(top_k=25),  # top_k must be < num_nodes
+                graph_config=GraphConfig(top_k=25),  # top_k must be < num_nodes (top_k == num_nodes fails)
             )
 
     def test_hidden_dim_not_divisible_by_num_heads_raises(self):
@@ -254,9 +254,7 @@ class TestTMTGNNForward:
 
     def test_gradients_flow_to_input(self):
         model = make_model()
-        x = make_input(batch=2, requires_grad=True) if False else torch.randn(
-            2, 2, 25, 12, requires_grad=True
-        )
+        x = torch.randn(2, 2, 25, 12, requires_grad=True)
         out = model(x)
         out.sum().backward()
         assert x.grad is not None
