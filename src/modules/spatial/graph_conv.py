@@ -61,8 +61,8 @@ class GraphConv(nn.Module):
         if adj.dim() == 2:
             adj = adj.unsqueeze(0)
 
-        # Perform weighted neighbor aggregation: sum over source nodes (v dimension)
+        # Perform weighted neighbor aggregation: sum over source nodes
         # weighted by adjacency scores, computing target node features as
         # weighted sum of source node features across all channels and time steps
-        x = torch.einsum("bcvl,bvw->bcwl", x, adj)
+        x = torch.einsum("bcnl,bnm->bcml", x, adj)
         return x.contiguous()
