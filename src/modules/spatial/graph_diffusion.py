@@ -101,11 +101,11 @@ class GraphDiffusion(nn.Module):
         if adj.dim() == 2:
             adj = adj.unsqueeze(0)
 
-        _, N, _ = adj.shape
+        _, n, _ = adj.shape
 
         # Add self-loops to preserve node's own features during aggregation,
         # ensuring information from the node itself is retained through propagation
-        eye = torch.eye(N, device=x.device).unsqueeze(0)
+        eye = torch.eye(n, device=x.device).unsqueeze(0)
         adj = adj + eye
 
         # Normalize adjacency by row degree for scale-invariant message passing,
