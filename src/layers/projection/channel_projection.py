@@ -22,14 +22,9 @@ class ChannelProjection(nn.Module):
     Attributes:
         projection (nn.Conv2d):
             1x1 convolution module for channel-wise feature transformation.
-
-    Notes:
-        - Uses 1x1 convolution for efficient pointwise channel mixing
-        - Operates independently on each node and time step
-        - Fully learnable transformation via Conv2d weight and bias parameters
     """
 
-    def __init__(self, in_channels: int, out_channels: int, bias: bool = True) -> None:
+    def __init__(self, in_channels: int, out_channels: int, bias: bool) -> None:
         """Initialize ChannelProjection layer.
 
         Args:
@@ -38,12 +33,12 @@ class ChannelProjection(nn.Module):
             out_channels (int):
                 Number of output feature channels to project to.
             bias (bool):
-                Whether to include a learnable bias term. Default is True.
+                Whether to include a learnable bias term.
         """
         super().__init__()
 
-        # Create 1x1 convolution for pointwise channel projection.
-        # kernel_size=1 means no spatial mixing, only channel transformation
+        # Create 1x1 convolution for pointwise channel projection
+        # (kernel_size=1 means no spatial mixing, only channel transformation)
         self.projection = nn.Conv2d(
             in_channels,
             out_channels,

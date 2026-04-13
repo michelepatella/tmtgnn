@@ -196,7 +196,7 @@ class TMTGNN(nn.Module):
             )
             self.normalization_layers.append(
                 LayerNorm(
-                    (tmtgnn_config.hidden_dim, num_nodes, seq_length),
+                    normalized_shape=(tmtgnn_config.hidden_dim, num_nodes, seq_length),
                     eps=norm_config.eps,
                     elementwise_affine=norm_config.elementwise_affine,
                 )

@@ -57,7 +57,9 @@ class GraphDiffusion(nn.Module):
 
         self.graph_conv = GraphConv()
         self.projection = ChannelProjection(
-            (diffusion_steps + 1) * in_channels, out_channels, bias=projection_bias
+            in_channels=(diffusion_steps + 1) * in_channels,
+            out_channels=out_channels,
+            bias=projection_bias
         )
         self.diffusion_steps = diffusion_steps
         self.residual_alpha = residual_alpha
