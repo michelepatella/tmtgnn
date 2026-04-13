@@ -19,10 +19,17 @@ class GraphStructureLearner(nn.Module):
     producing a sparse graph via top-k selection, enabling
     adaptive structure construction.
 
-    Notes:
-        - Operates on external node representations provided at runtime
-        - Produces asymmetric adjacency (directional structure)
-        - Uses top-k sparsification for stability and efficiency
+    Attributes:
+        top_k (int):
+            Number of outgoing edges per node (top-k sparsification).
+        sigmoid_alpha (float):
+            Scaling factor for sigmoid non-linearity sharpness.
+        noise_scale (float):
+            Scale of random noise added to adjacency scores for stability.
+        src_encoder (nn.Linear):
+            Linear layer encoding node representations into source space.
+        dst_encoder (nn.Linear):
+            Linear layer encoding node representations into destination space.
     """
 
     def __init__(
