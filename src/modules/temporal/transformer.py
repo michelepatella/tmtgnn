@@ -39,7 +39,7 @@ class Transformer(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        num_head: int,
+        num_heads: int,
         num_layers: int,
         dropout: float,
         max_sequence_length: int,
@@ -51,7 +51,7 @@ class Transformer(nn.Module):
                 Number of input feature channels before temporal modeling.
             out_channels (int):
                 Number of output feature channels after projection.
-            num_head (int):
+            num_heads (int):
                 Number of attention heads in the Transformer encoder,
                 controlling parallel attention subspace information.
             num_layers (int):
@@ -85,13 +85,14 @@ class Transformer(nn.Module):
         # Create single encoder layer with specified configuration
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=out_channels,
-            nhead=num_head,
+            nhead=num_heads,
             dropout=dropout,
             batch_first=True,
         )
 
         # Stack multiple encoder layers to build hierarchical temporal
-        # representations, allowing model to learn multi-scale temporal patterns
+        # representations for multivariate temporal modeling across 
+        # multiple feature channels
         self.transformer = nn.TransformerEncoder(
             encoder_layer,
             num_layers=num_layers,
