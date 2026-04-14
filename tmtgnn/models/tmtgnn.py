@@ -11,15 +11,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import copy
-from graph import GraphStructureLearner
-from modules import Transformer
-from modules import GraphDiffusion
-from layers import LayerNorm
-from config import DiffusionConfig
-from config import GraphConfig
-from config import NormConfig
-from config import TMTGNNConfig
-from config import TransformerConfig
+from ..graph import GraphStructureLearner
+from ..modules import Transformer
+from ..modules import GraphDiffusion
+from ..layers import LayerNorm
+from ..config import DiffusionConfig
+from ..config import GraphConfig
+from ..config import NormConfig
+from ..config import TMTGNNConfig
+from ..config import TransformerConfig
 
 
 class TMTGNN(nn.Module):
