@@ -1,4 +1,4 @@
-"""src/layers/projection/channel_projection.py
+"""tmtgnn/layers/projection/channel_projection.py
 
 Channel projection layer.
 

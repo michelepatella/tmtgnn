@@ -1,4 +1,4 @@
-"""src/modules/temporal/positional_encoding.py
+"""tmtgnn/modules/temporal/positional_encoding.py
 
 Positional encoding for temporal sequences.
 

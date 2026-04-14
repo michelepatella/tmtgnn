@@ -1,4 +1,4 @@
-"""src/layers/normalization/layer_norm.py
+"""tmtgnn/layers/normalization/layer_norm.py
 
 Layer normalization module.
 

@@ -1,4 +1,4 @@
-"""src/graph/graph_structure_learner.py
+"""tmtgnn/graph/graph_structure_learner.py
 
 Graph structure learning module.
 

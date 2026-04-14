@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tmtgnn"
+version = "0.1.0"
+description = "Transformer-based Multivariate Temporal Graph Neural Network"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    {name = "Michele Patella"}
+]
+dependencies = ["torch==2.11.0"]
+
+[project.urls]
+Repository = "https://github.com/michelepatella/T-MTGNN.git"
