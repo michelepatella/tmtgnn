@@ -91,7 +91,7 @@ class Transformer(nn.Module):
         )
 
         # Stack multiple encoder layers to build hierarchical temporal
-        # representations for multivariate temporal modeling across 
+        # representations for multivariate temporal modeling across
         # multiple feature channels
         self.transformer = nn.TransformerEncoder(
             encoder_layer,
@@ -130,15 +130,15 @@ class Transformer(nn.Module):
         x = x.permute(0, 2, 3, 1).contiguous()
         x = x.view(batch * num_nodes, seq_length, channels)
 
-        # Project input channels to output dimensionality 
+        # Project input channels to output dimensionality
         # for consistent feature space
         x = self.projection(x)
-        
-        # Add sinusoidal positional encoding to inject temporal 
+
+        # Add sinusoidal positional encoding to inject temporal
         # position information, enabling model to distinguish and
         # reason about position in temporal sequences
         x = self.positional_encoding(x)
-        
+
         # Apply stacked Transformer encoder layers for multi-head self-attention,
         # learning temporal dependencies and patterns across the sequence
         x = self.transformer(x)

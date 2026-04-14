@@ -33,7 +33,7 @@ class TMTGNN(nn.Module):
 
     Attributes:
         graph_learner (GraphStructureLearner):
-            Learns adaptive graph structure from temporally-enriched node 
+            Learns adaptive graph structure from temporally-enriched node
             representations.
         input_projection (nn.Conv2d):
             Projects input channels to hidden dimension via 1x1 convolution.
@@ -126,8 +126,8 @@ class TMTGNN(nn.Module):
         self.num_forecast_steps = tmtgnn_config.num_forecast_steps
         self.node_repr_prev = None
         self.ema_alpha = graph_config.ema_alpha
-        
-        # Learnable node embeddings to encode node identity and structural 
+
+        # Learnable node embeddings to encode node identity and structural
         # information, helping the model distinguish between different nodes
         # in the graph
         self.node_emb_layer = nn.Embedding(num_nodes, tmtgnn_config.hidden_dim)
@@ -171,7 +171,7 @@ class TMTGNN(nn.Module):
                 )
             )
 
-            # Spatial modeling (forward): diffuse information along learned 
+            # Spatial modeling (forward): diffuse information along learned
             # graph edges
             self.diffusion_forward.append(
                 GraphDiffusion(
@@ -183,7 +183,7 @@ class TMTGNN(nn.Module):
                 )
             )
 
-            # Spatial modeling (backward): diffuse information along transposed 
+            # Spatial modeling (backward): diffuse information along transposed
             # graph edges for bidirectional information exchange
             self.diffusion_backward.append(
                 GraphDiffusion(
@@ -241,7 +241,7 @@ class TMTGNN(nn.Module):
         transformer_config: TransformerConfig,
     ) -> None:
         """Validates initialization parameters before module construction.
-        
+
         Args:
             num_nodes (int):
                 Number of nodes in the graph.
@@ -254,7 +254,7 @@ class TMTGNN(nn.Module):
             device (torch.device):
                 Computation device for model parameters and buffers.
             graph_config (GraphConfig):
-                Configuration for graph structure learning including top-k 
+                Configuration for graph structure learning including top-k
                 sparsification, sigmoid scaling, noise regularization, and EMA smoothing.
             tmtgnn_config (TMTGNNConfig):
                 Configuration for TMTGNN model hyper-parameters including hidden
@@ -262,7 +262,7 @@ class TMTGNN(nn.Module):
             transformer_config (TransformerConfig):
                 Configuration for Transformer temporal modeling including number of heads,
                 encoder layers, dropout, and maximum sequence length for positional encoding.
-        
+
         Raises:
             TypeError:
                 If any parameter has incorrect type.
@@ -274,9 +274,7 @@ class TMTGNN(nn.Module):
             assert isinstance(in_channels, int), "in_channels must be int"
             assert isinstance(seq_length, int), "seq_length must be int"
             assert isinstance(out_channels, int), "out_channels must be int"
-            assert isinstance(device, torch.device), (
-                "device must be torch.device"
-            )
+            assert isinstance(device, torch.device), "device must be torch.device"
         except AssertionError as e:
             raise TypeError(f"Invalid TMTGNN parameter: {e}")
 
@@ -285,15 +283,13 @@ class TMTGNN(nn.Module):
             assert in_channels > 0, "in_channels must be > 0"
             assert seq_length > 0, "seq_length must be > 0"
             assert out_channels > 0, "out_channels must be > 0"
-            assert (
-                tmtgnn_config.hidden_dim % transformer_config.num_heads == 0
-            ), "hidden_dim must be divisible by num_heads"
-            assert (
-                tmtgnn_config.hidden_dim >= transformer_config.num_heads
-            ), "hidden_dim must be >= num_heads"
-            assert (
-                0 < graph_config.top_k < num_nodes
-            ), "top_k must be in (0, num_nodes)"
+            assert tmtgnn_config.hidden_dim % transformer_config.num_heads == 0, (
+                "hidden_dim must be divisible by num_heads"
+            )
+            assert tmtgnn_config.hidden_dim >= transformer_config.num_heads, (
+                "hidden_dim must be >= num_heads"
+            )
+            assert 0 < graph_config.top_k < num_nodes, "top_k must be in (0, num_nodes)"
         except AssertionError as e:
             raise ValueError(f"Invalid TMTGNN parameter: {e}")
 
@@ -347,7 +343,7 @@ class TMTGNN(nn.Module):
         for i in range(self.num_layers):
             # Store input for residual connection
             residual = x
-            
+
             # Apply temporal Transformer to enrich temporal representations,
             # enabling better capture of long-range temporal dependencies
             x = self.temporal_layers[i](x)
@@ -389,7 +385,7 @@ class TMTGNN(nn.Module):
             x = self.diffusion_forward[i](x, adj) + self.diffusion_backward[i](
                 x, adj.transpose(-1, -2)
             )
-            
+
             # Apply dropout for regularization and preventing over-fitting
             x = F.dropout(x, self.dropout, training=self.training)
 
@@ -400,9 +396,9 @@ class TMTGNN(nn.Module):
 
             # Apply residual connection for improved gradient flow
             x = x + residual
-            
-            # Apply node-aware normalization: scales and shifts per-node features 
-            # differently, enabling heterogeneous normalization that respects 
+
+            # Apply node-aware normalization: scales and shifts per-node features
+            # differently, enabling heterogeneous normalization that respects
             # node-specific properties
             x = self.normalization_layers[i](x, node_idx)
 

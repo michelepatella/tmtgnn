@@ -27,7 +27,7 @@ class NormConfig:
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization.
-        
+
         Raises:
             TypeError:
                 If any parameter has incorrect type.
