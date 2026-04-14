@@ -42,7 +42,14 @@ class TMTGNNConfig:
     num_forecast_steps: int = 1
 
     def __post_init__(self) -> None:
-        """Validates the configuration parameters after initialization."""
+        """Validates the configuration parameters after initialization.
+        
+        Raises:
+            TypeError:
+                If any parameter has incorrect type.
+            ValueError:
+                If any parameter value violates constraints.
+        """
         try:
             assert isinstance(self.hidden_dim, int), "hidden_dim must be int"
             assert isinstance(self.skip_dim, int), "skip_dim must be int"

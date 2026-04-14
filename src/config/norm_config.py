@@ -26,7 +26,14 @@ class NormConfig:
     elementwise_affine: bool = True
 
     def __post_init__(self) -> None:
-        """Validates the configuration parameters after initialization."""
+        """Validates the configuration parameters after initialization.
+        
+        Raises:
+            TypeError:
+                If any parameter has incorrect type.
+            ValueError:
+                If any parameter value violates constraints.
+        """
         try:
             assert isinstance(self.eps, float), "eps must be float"
             assert isinstance(self.elementwise_affine, bool), (

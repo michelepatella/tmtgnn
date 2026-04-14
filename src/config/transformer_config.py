@@ -34,7 +34,14 @@ class TransformerConfig:
     max_sequence_length: int = 5000
 
     def __post_init__(self) -> None:
-        """Validates the configuration parameters after initialization."""
+        """Validates the configuration parameters after initialization.
+        
+        Raises:
+            TypeError:
+                If any parameter has incorrect type.
+            ValueError:
+                If any parameter value violates constraints.
+        """
         try:
             assert isinstance(self.num_heads, int), "num_heads must be int"
             assert isinstance(self.num_layers, int), "num_layers must be int"

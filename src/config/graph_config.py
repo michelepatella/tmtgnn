@@ -34,7 +34,14 @@ class GraphConfig:
     ema_alpha: float = 0.8
 
     def __post_init__(self) -> None:
-        """Validates the configuration parameters after initialization."""
+        """Validates the configuration parameters after initialization.
+        
+        Raises:
+            TypeError:
+                If any parameter has incorrect type.
+            ValueError:
+                If any parameter value violates constraints.
+        """
         try:
             assert isinstance(self.top_k, int), "top_k must be int"
             assert isinstance(self.sigmoid_alpha, float), "sigmoid_alpha must be float"

@@ -30,7 +30,14 @@ class DiffusionConfig:
     projection_bias: bool = True
 
     def __post_init__(self) -> None:
-        """Validates the configuration parameters after initialization."""
+        """Validates the configuration parameters after initialization.
+        
+        Raises:
+            TypeError:
+                If any parameter has incorrect type.
+            ValueError:
+                If any parameter value violates constraints.
+        """
         try:
             assert isinstance(self.diffusion_steps, int), "diffusion_steps must be int"
             assert isinstance(self.residual_alpha, float), (
