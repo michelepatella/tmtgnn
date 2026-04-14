@@ -62,11 +62,11 @@ class TMTGNN(nn.Module):
         seq_length: int,
         out_channels: int,
         device: torch.device,
-        diffusion_config: DiffusionConfig,
-        graph_config: GraphConfig,
-        norm_config: NormConfig,
-        tmtgnn_config: TMTGNNConfig,
-        transformer_config: TransformerConfig,
+        diffusion_config: DiffusionConfig | None = None,
+        graph_config: GraphConfig | None = None,
+        norm_config: NormConfig | None = None,
+        tmtgnn_config: TMTGNNConfig | None = None,
+        transformer_config: TransformerConfig | None = None,
     ) -> None:
         """Initialize TMTGNN.
 
@@ -81,21 +81,16 @@ class TMTGNN(nn.Module):
                 Number of output feature channels (prediction dimensionality).
             device (torch.device):
                 Computation device for model parameters and buffers.
-            diffusion_config (DiffusionConfig):
-                Configuration for graph diffusion layers including diffusion steps,
-                residual mixing, and output dimensionality.
-            graph_config (GraphConfig):
-                Configuration for graph structure learning including top-k 
-                sparsification, sigmoid scaling, noise regularization, and EMA smoothing.
-            norm_config (NormConfig):
-                Configuration for normalization layers including epsilon and
-                elementwise affine transformation flags.
-            tmtgnn_config (TMTGNNConfig):
-                Configuration for TMTGNN model hyper-parameters including hidden
-                dimension, number of layers, skip dimension, head dimension, and dropout.
-            transformer_config (TransformerConfig):
-                Configuration for Transformer temporal modeling including number of heads,
-                encoder layers, dropout, and maximum sequence length for positional encoding.
+            diffusion_config (DiffusionConfig | None):
+                Configuration for graph diffusion layers. If None, uses default.
+            graph_config (GraphConfig | None):
+                Configuration for graph structure learning. If None, uses default.
+            norm_config (NormConfig | None):
+                Configuration for normalization layers. If None, uses default.
+            tmtgnn_config (TMTGNNConfig | None):
+                Configuration for TMTGNN model hyper-parameters. If None, uses default.
+            transformer_config (TransformerConfig | None):
+                Configuration for Transformer temporal modeling. If None, uses default.
         """
         super().__init__()
 
