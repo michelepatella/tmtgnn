@@ -2,10 +2,10 @@
 
 Graph structure learning module.
 
-Provides the `GraphStructureLearner` class, which learns a
-task-adaptive adjacency matrix from node embeddings or static
-node features. The learned graph is sparsified using top-k
-selection to enforce locality and reduce noise.
+Provides the `GraphStructureLearner` class, which learns an
+adjacency matrix from node embeddings. The learned graph
+is sparsified using top-k selection to enforce locality
+and reduce noise.
 """
 
 import torch
@@ -15,55 +15,43 @@ import torch.nn as nn
 class GraphStructureLearner(nn.Module):
     """Graph structure learning module.
 
-    Learns a directed adjacency matrix from node embeddings or
-    static node features, producing a sparse graph via top-k
-    selection, enabling adaptive structure construction.
+    Learns an adjacency matrix from node embeddings,
+    producing a sparse graph via top-k selection, enabling
+    adaptive structure construction.
 
-    Notes:
-        - Operates on external node representations provided at runtime
-        - Produces asymmetric adjacency (directional structure)
-        - Uses top-k sparsification for stability and efficiency
+    Attributes:
+        top_k (int):
+            Number of outgoing edges per node (top-k sparsification).
+        sigmoid_alpha (float):
+            Scaling factor for sigmoid non-linearity sharpness.
+        noise_scale (float):
+            Scale of random noise added to adjacency scores for stability.
+        src_encoder (nn.Linear):
+            Linear layer encoding node representations into source space.
+        dst_encoder (nn.Linear):
+            Linear layer encoding node representations into destination space.
     """
 
     def __init__(
-        self,
-        num_nodes: int,
-        top_k: int,
-        hidden_dim: int,
-        alpha: float = 3.0,
-        noise_scale: float = 0.01,
-        node_features: torch.Tensor | None = None,
+        self, top_k: int, hidden_dim: int, sigmoid_alpha: float, noise_scale: float
     ) -> None:
         """Initialize GraphStructureLearner.
 
         Args:
-            num_nodes (int):
-                Number of nodes in the graph.
             top_k (int):
                 Number of outgoing edges per node (top-k sparsification).
             hidden_dim (int):
                 Embedding dimension.
-            alpha (float):
-                Scaling factor for non-linearity sharpness. Default is 3.0.
+            sigmoid_alpha (float):
+                Scaling factor for sigmoid non-linearity sharpness.
             noise_scale (float):
                 Scale of random noise added to adjacency scores for stability.
-                Default is 0.01.
-            node_features (torch.Tensor | None):
-                Precomputed node features of shape (num_nodes, feature_dim).
-                Default is None.
         """
         super().__init__()
 
-        self.num_nodes = num_nodes
         self.top_k = top_k
-        self.hidden_dim = hidden_dim
-        self.alpha = alpha
+        self.sigmoid_alpha = sigmoid_alpha
         self.noise_scale = noise_scale
-
-        if node_features is not None:
-            self.register_buffer("node_features", node_features)
-        else:
-            self.node_features = None
 
         self.src_encoder = nn.Linear(hidden_dim, hidden_dim)
         self.dst_encoder = nn.Linear(hidden_dim, hidden_dim)
@@ -82,11 +70,6 @@ class GraphStructureLearner(nn.Module):
                     - n: number of nodes in the graph
                     - hidden_dim: embedding dimension
 
-                This representation can be:
-                    - Learned node embeddings
-                    - Projected external node features
-                    - Combination of both
-
         Returns:
             torch.Tensor:
                 Sparse learned adjacency matrix of shape (n, n), where:
@@ -96,23 +79,36 @@ class GraphStructureLearner(nn.Module):
                     - Asymmetric (directed graph structure)
                     - Sparse (enforced by top-k selection)
                     - Non-negative (after sigmoid activation)
-                    - Stochastic during training (due to noise injection)
         """
+        # Encode nodes into source/destination spaces (two
+        # encodings for each node, directional embeddings)
         node_src = torch.tanh(self.src_encoder(node_repr))
         node_dst = torch.tanh(self.dst_encoder(node_repr))
 
+        # Asymmetric interaction scores (directed influence,
+        # how much node i influences node j vs. vice versa)
         score = torch.mm(node_src, node_dst.t()) - torch.mm(node_dst, node_src.t())
 
-        adj = torch.sigmoid(self.alpha * score)
+        # Normalize scores to [0, 1]
+        adj = torch.sigmoid(self.sigmoid_alpha * score)
 
+        # Optional noise for regularization during training
         if self.training and self.noise_scale > 0.0:
             adj_for_topk = adj + torch.rand_like(adj) * self.noise_scale
         else:
             adj_for_topk = adj
 
+        # Top-k sparsification per node to keep only the strongest
+        # connections (outgoing edges), making the graph sparse while
+        # focusing on learning relevant relationships only
         k = min(self.top_k, adj_for_topk.size(1))
         _, top_idx = adj_for_topk.topk(k, dim=1)
 
+        # Build sparse mask from top-k indices where
+        # mask[i, j] = 1 if j is in top-k neighbors of i, else 0
         mask = torch.zeros_like(adj).scatter(1, top_idx, 1.0)
 
+        # Apply mask to adjacency to enforce sparsity,
+        # returning original scores for top-k connections
+        # and zeroing out the rest
         return (adj * mask).contiguous()
