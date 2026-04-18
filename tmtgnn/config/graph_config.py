@@ -47,7 +47,9 @@ class GraphConfig:
                 If any parameter value violates constraints.
         """
         try:
-            assert isinstance(self.learning_enabled, bool), "learning_enabled must be bool"
+            assert isinstance(self.learning_enabled, bool), (
+                "learning_enabled must be bool"
+            )
             assert isinstance(self.top_k, int), "top_k must be int"
             assert isinstance(self.sigmoid_alpha, float), "sigmoid_alpha must be float"
             assert isinstance(self.noise_scale, float), "noise_scale must be float"
