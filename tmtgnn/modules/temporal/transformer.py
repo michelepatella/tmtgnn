@@ -2,12 +2,10 @@
 
 Transformer module.
 
-Provides the `Transformer` class, which replaces classical
-temporal convolution in spatio-temporal graph neural networks
-with a Transformer-based temporal modeling block. The module
-applies self-attention over the temporal dimension for each node
-independently, enabling long-range temporal dependency modeling without
-explicit convolutional inductive bias.
+Provides the `Transformer` class, which enables multi-mode temporal/node-level
+self-attention for spatio-temporal graph neural networks. Supports:
+- Temporal attention: Along time dimension
+- Node attention: Along node dimension
 """
 
 import torch
@@ -16,12 +14,13 @@ from .positional_encoding import PositionalEncoding
 
 
 class Transformer(nn.Module):
-    """Transformer module for temporal self-attention modeling.
+    """Flexible Transformer module for multi-mode self-attention.
 
-    Applies a Transformer encoder over the temporal dimension of each node
-    independently, replacing classical temporal convolution in spatio-temporal
-    graph neural networks. Enables long-range temporal dependency modeling through
-    multi-head self-attention.
+    Applies multi-head self-attention with positional encoding, supporting:
+    1. Temporal mode: Self-attention over time dimension per node
+    2. Node mode: Self-attention over node dimension
+    Enables rich temporal/node-level dependency modeling without convolutional
+    inductive bias, applicable to diverse graph structures.
 
     Attributes:
         out_channels (int):
@@ -30,9 +29,11 @@ class Transformer(nn.Module):
             Optional learnable linear projection to transform input channel
             dimension to output dimension. Identity if dimensions match.
         positional_encoding (PositionalEncoding):
-            Sinusoidal positional encoding to inject temporal order information.
+            Sinusoidal positional encoding for temporal or node position info.
         transformer (nn.TransformerEncoder):
-            Stacked Transformer encoder layers for temporal self-attention.
+            Stacked Transformer encoder layers for self-attention.
+        mode (str):
+            Active attention mode ("temporal" or "node").
     """
 
     def __init__(
@@ -43,6 +44,7 @@ class Transformer(nn.Module):
         num_layers: int,
         dropout: float,
         max_sequence_length: int,
+        mode: str,
     ) -> None:
         """Initialize Transformer.
 
@@ -56,15 +58,20 @@ class Transformer(nn.Module):
                 controlling parallel attention subspace information.
             num_layers (int):
                 Number of stacked Transformer encoder layers, controlling
-                depth and receptive field over temporal dimension.
+                depth and receptive field over attention dimension.
             dropout (float):
                 Dropout rate applied inside Transformer layers for regularization.
             max_sequence_length (int):
-                Maximum temporal sequence length to precompute positional encodings.
+                Maximum sequence length for positional encoding.
+            mode (str):
+                Attention mode:
+                - "temporal": Self-attention over time dimension per node
+                - "node": Self-attention over node dimension
         """
         super().__init__()
 
         self.out_channels = out_channels
+        self.mode = mode
 
         # Create optional learnable projection to transform input channels
         # to output channels (if dimensions match, use identity to avoid
@@ -76,7 +83,7 @@ class Transformer(nn.Module):
         )
 
         # Create positional encoding for temporal order information,
-        # enabling model to distinguish position in temporal sequences
+        # enabling model to distinguish position in sequences or node graphs
         self.positional_encoding = PositionalEncoding(
             hidden_dim=out_channels,
             max_sequence_length=max_sequence_length,
@@ -90,21 +97,19 @@ class Transformer(nn.Module):
             batch_first=True,
         )
 
-        # Stack multiple encoder layers to build hierarchical temporal
-        # representations for multivariate temporal modeling across
-        # multiple feature channels
+        # Stack multiple encoder layers to build hierarchical representations
+        # for multivariate temporal/spatial modeling across multiple scales
         self.transformer = nn.TransformerEncoder(
             encoder_layer,
             num_layers=num_layers,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Compute temporal representation via multi-head self-attention.
+        """Compute representation via multi-head self-attention.
 
-        Applies Transformer encoder over the temporal dimension for each node
-        independently. Reshapes input so each node is treated as a separate
-        temporal sequence, applies projection and positional encoding, then
-        feeds through stacked Transformer layers for self-attention computation.
+        Applies Transformer encoder with explicitly configured attention mode:
+        - Temporal mode: Self-attention per node over time dimension
+        - Node mode: Self-attention over node dimension
 
         Args:
             x (torch.Tensor):
@@ -122,30 +127,126 @@ class Transformer(nn.Module):
                     - n: number of nodes (same as input)
                     - l: sequence length (same as input)
         """
-        # Extract dimensions
-        batch, channels, num_nodes, seq_length = x.shape
+        batch, in_channels, num_nodes, seq_length = x.shape
 
-        # Reshape for per-node temporal processing (this treats each node
-        # independently as a separate sequence for self-attention)
+        if self.mode == "temporal":
+            return self._forward_temporal(x, batch, in_channels, num_nodes, seq_length)
+        else:
+            return self._forward_node(x, batch, in_channels, num_nodes, seq_length)
+
+    def _forward_temporal(
+        self,
+        x: torch.Tensor,
+        batch: int,
+        in_channels: int,
+        num_nodes: int,
+        seq_length: int,
+    ) -> torch.Tensor:
+        """Forward pass with temporal mode: self-attention over time per node.
+
+        Classical multi-node temporal attention approach. Treats each node independently
+        and applies Transformer self-attention over the time dimension. Each node's
+        temporal sequence is processed separately, enabling the model to learn
+        node-specific temporal patterns without direct cross-node temporal interaction.
+
+        Args:
+            x (torch.Tensor):
+                Input feature tensor of shape (b, c, n, l), where:
+                    - b: batch size
+                    - c: number of input channels
+                    - n: number of nodes
+                    - l: sequence length (temporal dimension)
+            batch (int):
+                Batch size extracted from input shape
+            in_channels (int):
+                Number of input feature channels.
+            num_nodes (int):
+                Number of nodes in the graph.
+            seq_length (int):
+                Length of temporal sequence.
+
+        Returns:
+            torch.Tensor:
+                Output feature tensor of shape (b, c_out, n, l), where:
+                    - b: batch size (same as input)
+                    - c_out: number of output channels
+                    - n: number of nodes (same as input)
+                    - l: sequence length (same as input)
+        """
+        # Reshape for per-node temporal processing
         x = x.permute(0, 2, 3, 1).contiguous()
-        x = x.view(batch * num_nodes, seq_length, channels)
+        x = x.view(batch * num_nodes, seq_length, in_channels)
 
-        # Project input channels to output dimensionality
-        # for consistent feature space
+        # Project to output dimension
         x = self.projection(x)
 
-        # Add sinusoidal positional encoding to inject temporal
-        # position information, enabling model to distinguish and
-        # reason about position in temporal sequences
+        # Add positional encoding for temporal positions
         x = self.positional_encoding(x)
 
-        # Apply stacked Transformer encoder layers for multi-head self-attention,
-        # learning temporal dependencies and patterns across the sequence
+        # Apply Transformer over temporal dimension
         x = self.transformer(x)
 
-        # Reshape back to original node structure and
-        # restore original dimension order
+        # Reshape back to (b, c_out, n, l)
         x = x.view(batch, num_nodes, seq_length, self.out_channels)
         x = x.permute(0, 3, 1, 2).contiguous()
+
+        return x
+
+    def _forward_node(
+        self,
+        x: torch.Tensor,
+        batch: int,
+        in_channels: int,
+        num_nodes: int,
+        seq_length: int,
+    ) -> torch.Tensor:
+        """Forward pass with node mode: self-attention over nodes per timestep.
+
+        Spatial attention approach for large spatio-temporal graphs. Treats each
+        timestep independently and applies Transformer self-attention over the node
+        dimension. Each timestep's node features are processed separately, enabling the
+        model to learn global spatial correlations and cross-node dependencies at each
+        temporal step.
+
+        Args:
+            x (torch.Tensor):
+                Input feature tensor of shape (b, c, n, l), where:
+                    - b: batch size
+                    - c: number of input channels
+                    - n: number of nodes
+                    - l: sequence length (temporal dimension)
+            batch (int):
+                Batch size extracted from input shape.
+            in_channels (int):
+                Number of input feature channels.
+            num_nodes (int):
+                Number of nodes in the graph.
+            seq_length (int):
+                Length of temporal sequence.
+
+        Returns:
+            torch.Tensor:
+                Output feature tensor of shape (b, c_out, n, l), where:
+                    - b: batch size (same as input)
+                    - c_out: number of output channels
+                    - n: number of nodes (same as input)
+                    - l: sequence length (same as input)
+        """
+        # Reshape for node-level processing
+        x = x.permute(0, 3, 2, 1).contiguous()
+        x = x.view(batch * seq_length, num_nodes, in_channels)
+
+        # Project to output dimension
+        x = self.projection(x)
+
+        # Add positional encoding for node positions
+        x = self.positional_encoding(x)
+
+        # Apply Transformer over node dimension
+        x = self.transformer(x)
+
+        # Reshape back to (b, c_out, n, l)
+        x = x.view(batch, seq_length, num_nodes, self.out_channels)
+        x = x.permute(0, 3, 2, 1).contiguous()
 
         return x

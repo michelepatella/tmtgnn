@@ -14,6 +14,9 @@ class GraphConfig:
     """Configuration for graph structure learning.
 
     Attributes:
+        learning_enabled (bool):
+            Whether to learn graph structure adaptively from data.
+            Default is True.
         top_k (int):
             Number of outgoing edges per node in learned graph.
             Default is 20.
@@ -28,6 +31,7 @@ class GraphConfig:
             Default is 0.8.
     """
 
+    learning_enabled: bool = True
     top_k: int = 20
     sigmoid_alpha: float = 3.0
     noise_scale: float = 0.01
@@ -43,6 +47,9 @@ class GraphConfig:
                 If any parameter value violates constraints.
         """
         try:
+            assert isinstance(self.learning_enabled, bool), (
+                "learning_enabled must be bool"
+            )
             assert isinstance(self.top_k, int), "top_k must be int"
             assert isinstance(self.sigmoid_alpha, float), "sigmoid_alpha must be float"
             assert isinstance(self.noise_scale, float), "noise_scale must be float"
