@@ -1,10 +1,10 @@
 """tmtgnn/models/tmtgnn.py
 
-T-MTGNN model.
+T-MTGNN: Transformer-based Multivariate Temporal Graph Neural Network.
 
-Provides the `TMTGNN` class, which implements a spatio-temporal graph
-neural network combining Transformer-based temporal modeling with
-graph diffusion layers and an adaptive graph structure learner.
+Provides the `TMTGNN` class, a flexible spatio-temporal graph neural network
+combining multi-mode Transformer layers with graph diffusion and optional
+adaptive graph structure learning.
 """
 
 import torch
@@ -23,36 +23,49 @@ from ..config import TransformerConfig
 
 
 class TMTGNN(nn.Module):
-    """Transformer-based Multivariate Temporal Graph Neural Network.
+    """T-MTGNN: Transformer-based Multivariate Temporal Graph Neural Network.
 
-    Spatio-temporal graph neural network combining Transformer-based temporal
-    modeling with graph diffusion layers and adaptive graph structure learning.
-    Enables joint temporal and spatial dependency modeling over graph-structured
-    time series data by first enriching temporal representations, then learning
-    data-adaptive graph structure, and finally propagating information via diffusion.
+    Combines multi-mode Transformer-based representations with graph diffusion and
+    optional adaptive graph learning, enabling diverse graph-structured forecasting.
 
     Attributes:
-        graph_learner (GraphStructureLearner):
-            Learns adaptive graph structure from temporally-enriched node
-            representations.
+        num_layers (int):
+            Number of stacked spatio-temporal blocks.
+        dropout (float):
+            Dropout rate applied to model layers for regularization.
+        num_forecast_steps (int):
+            Number of future time steps to predict (forecast horizon).
+        graph_learning_enabled (bool):
+            Whether to learn graph structure from data.
+        node_repr_prev (torch.Tensor | None):
+            Previous node representations for exponential moving average (EMA) smoothing
+            of graph structure stability across batches.
+        ema_alpha (float):
+            Exponential moving average factor for smoothing node representations
+            and stabilizing learned graph structure.
+        node_emb_layer (nn.Embedding):
+            Learnable node embeddings encoding node identity.
+        graph_learner (GraphStructureLearner | None):
+            Optional graph structure learner. None if learning disabled.
         input_projection (nn.Conv2d):
-            Projects input channels to hidden dimension via 1x1 convolution.
+            Initial channel projection to hidden dimension.
         temporal_layers (nn.ModuleList):
-            Stacked Transformer encoders for temporal self-attention per node.
+            Multi-mode Transformer encoders for representation enrichment.
         diffusion_forward (nn.ModuleList):
-            Graph diffusion modules for forward spatial propagation.
+            Graph diffusion module (forward).
         diffusion_backward (nn.ModuleList):
-            Graph diffusion modules for backward spatial propagation.
+            Graph diffusion module (backward).
         skip_projections (nn.ModuleList):
-            1x1 convolutions projecting block outputs to skip dimension.
+            Skip connection projections for multi-layer aggregation.
         normalization_layers (nn.ModuleList):
             Node-aware layer normalization applied after each block.
-        node_emb_layer (nn.Embedding):
-            Learnable node embeddings encoding node identity/position.
         head_1 (nn.Conv2d):
             Output MLP head for final prediction transformation.
         head_2 (nn.Conv2d):
             Output MLP head for final prediction transformation.
+        idx (torch.Tensor):
+            Registered buffer of node indices used for node-aware normalization
+            in normalization layers.
     """
 
     def __init__(
@@ -72,11 +85,11 @@ class TMTGNN(nn.Module):
 
         Args:
             num_nodes (int):
-                Number of nodes in the graph.
+                Total number of nodes in the graph.
             in_channels (int):
-                Number of input feature channels per node and time step.
+                Number of input feature channels per node per timestep.
             seq_length (int):
-                Input temporal sequence length.
+                Input temporal sequence length (timesteps).
             out_channels (int):
                 Number of output feature channels (prediction dimensionality).
             device (torch.device):
@@ -88,9 +101,10 @@ class TMTGNN(nn.Module):
             norm_config (NormConfig | None):
                 Configuration for normalization layers. If None, uses default.
             tmtgnn_config (TMTGNNConfig | None):
-                Configuration for TMTGNN model hyper-parameters. If None, uses default.
+                Configuration for TMTGNN model.
+                If None, uses default.
             transformer_config (TransformerConfig | None):
-                Configuration for Transformer temporal modeling. If None, uses default.
+                Configuration for Transformer. If None, uses default.
         """
         super().__init__()
 
@@ -124,6 +138,8 @@ class TMTGNN(nn.Module):
         self.num_layers = tmtgnn_config.num_layers
         self.dropout = tmtgnn_config.dropout
         self.num_forecast_steps = tmtgnn_config.num_forecast_steps
+        self.graph_learning_enabled = graph_config.learning_enabled
+
         self.node_repr_prev = None
         self.ema_alpha = graph_config.ema_alpha
 
@@ -132,14 +148,15 @@ class TMTGNN(nn.Module):
         # in the graph
         self.node_emb_layer = nn.Embedding(num_nodes, tmtgnn_config.hidden_dim)
 
-        # Learner infers adaptive graph structure from node embeddings,
-        # enabling the model to discover data-driven relationships
-        self.graph_learner = GraphStructureLearner(
-            top_k=graph_config.top_k,
-            hidden_dim=tmtgnn_config.hidden_dim,
-            sigmoid_alpha=graph_config.sigmoid_alpha,
-            noise_scale=graph_config.noise_scale,
-        )
+        # Optional graph structure learner
+        self.graph_learner = None
+        if self.graph_learning_enabled:
+            self.graph_learner = GraphStructureLearner(
+                top_k=graph_config.top_k,
+                hidden_dim=tmtgnn_config.hidden_dim,
+                sigmoid_alpha=graph_config.sigmoid_alpha,
+                noise_scale=graph_config.noise_scale,
+            )
 
         # Project input to hidden dimension for consistent feature space
         # across all layers via learnable 1x1 convolution
@@ -150,7 +167,7 @@ class TMTGNN(nn.Module):
         )
 
         # Create L stacked spatio-temporal blocks, each combining
-        # temporal Transformer and spatial graph diffusion
+        # flexible Transformer and spatial graph diffusion
         self.temporal_layers = nn.ModuleList()
         self.diffusion_forward = nn.ModuleList()
         self.diffusion_backward = nn.ModuleList()
@@ -158,8 +175,7 @@ class TMTGNN(nn.Module):
         self.normalization_layers = nn.ModuleList()
 
         for _ in range(self.num_layers):
-            # Temporal modeling: Transformer encoder for per-node self-attention
-            # over temporal dimension, learning temporal dependencies
+            # Multi-mode Transformer for representation enrichment
             self.temporal_layers.append(
                 Transformer(
                     in_channels=tmtgnn_config.hidden_dim,
@@ -168,11 +184,11 @@ class TMTGNN(nn.Module):
                     num_layers=transformer_config.num_layers,
                     dropout=transformer_config.dropout,
                     max_sequence_length=transformer_config.max_sequence_length,
+                    mode=transformer_config.mode,
                 )
             )
 
-            # Spatial modeling (forward): diffuse information along learned
-            # graph edges
+            # Spatial modeling (forward): diffuse information along graph edges
             self.diffusion_forward.append(
                 GraphDiffusion(
                     in_channels=tmtgnn_config.hidden_dim,
@@ -183,8 +199,8 @@ class TMTGNN(nn.Module):
                 )
             )
 
-            # Spatial modeling (backward): diffuse information along transposed
-            # graph edges for bidirectional information exchange
+            # Spatial modeling (backward): diffuse along transposed edges
+            # for bidirectional information exchange
             self.diffusion_backward.append(
                 GraphDiffusion(
                     in_channels=tmtgnn_config.hidden_dim,
@@ -258,7 +274,8 @@ class TMTGNN(nn.Module):
                 sparsification, sigmoid scaling, noise regularization, and EMA smoothing.
             tmtgnn_config (TMTGNNConfig):
                 Configuration for TMTGNN model hyper-parameters including hidden
-                dimension, number of layers, skip dimension, head dimension, and dropout.
+                dimension, number of layers, skip dimension, head dimension, dropout,
+                and graph learning enable flag.
             transformer_config (TransformerConfig):
                 Configuration for Transformer temporal modeling including number of heads,
                 encoder layers, dropout, and maximum sequence length for positional encoding.
@@ -289,27 +306,42 @@ class TMTGNN(nn.Module):
             assert tmtgnn_config.hidden_dim >= transformer_config.num_heads, (
                 "hidden_dim must be >= num_heads"
             )
-            assert 0 < graph_config.top_k < num_nodes, "top_k must be in (0, num_nodes)"
+            if graph_config.learning_enabled:
+                assert 0 < graph_config.top_k < num_nodes, (
+                    "top_k must be in (0, num_nodes)"
+                )
         except AssertionError as e:
             raise ValueError(f"Invalid TMTGNN parameter: {e}")
 
-    def forward(self, x: torch.Tensor, idx: torch.Tensor | None = None) -> torch.Tensor:
-        """Compute forward pass of TMTGNN with adaptive graph structure.
+    def forward(
+        self,
+        x: torch.Tensor,
+        adj: torch.Tensor | None = None,
+        idx: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Compute forward pass with flexible graph handling.
 
-        Performs spatio-temporal modeling via the following pipeline:
+        Supports two graph modes:
+        - Graph learning mode:
+           - Learns adjacency matrix from temporally-enriched node representations
+           - Ignores adj input parameter (learns from data)
+           - First block only: graph learned once and reused
+
+        - Predefined graph mode:
+           - Uses adjacency matrix provided via adj parameter
+           - Useful for large spatio-temporal graphs
+           - adj required as input, cannot be None
+
+        Pipeline:
         (1) Project input to hidden dimension for feature space alignment
         (2) For each spatio-temporal block:
-            a. Apply temporal Transformer to enrich temporal representations
-            b. First layer learns adaptive graph structure from temporal features
-            c. Apply bidirectional graph diffusion for spatial information propagation
-            d. Accumulate skip connections for multi-layer representation aggregation
+            a. Apply Transformer to enrich temporal/node representations
+            b. In block 0: learn graph (if enabled) or validate provided graph
+            c. Apply bidirectional graph diffusion for spatial propagation
+            d. Accumulate skip connections for multi-layer aggregation
             e. Apply residual connections and node-aware normalization
         (3) Aggregate skip connections and project to output space
         (4) Extract predictions for specified forecast horizon
-
-        The key design principle: temporal enrichment enables better graph structure
-        learning, as node representations with seen full temporal history can capture
-        meaningful dependencies between nodes for structure inference.
 
         Args:
             x (torch.Tensor):
@@ -318,6 +350,11 @@ class TMTGNN(nn.Module):
                     - c: input feature channels
                     - n: number of nodes
                     - l: sequence length (temporal dimension)
+            adj (torch.Tensor | None):
+                Predefined adjacency matrix of shape (n, n) or (b, n, n).
+                - Required if graph_learning_enabled=False
+                - Ignored if graph_learning_enabled=True
+                - Default: None (graph will be learned)
             idx (torch.Tensor | None):
                 Optional node index tensor of shape (n,) for indexing node-specific
                 parameters in normalization layers. If None, uses registered buffer.
@@ -327,7 +364,17 @@ class TMTGNN(nn.Module):
                 Output predictions of shape (b, c_out, n) for single-step forecast,
                 or (b, num_forecast_steps, n, c_out) for multi-horizon, with
                 dimensions squeezed if c_out == 1.
+
+        Raises:
+            ValueError:
+                If graph_learning_enabled=False and adj is None.
         """
+        # Validate graph input when learning is disabled
+        if not self.graph_learning_enabled and adj is None:
+            raise ValueError(
+                "graph_learning_enabled=False requires adj to be provided as input."
+            )
+
         # Use provided node indices or fall back to registered buffer
         node_idx = idx if idx is not None else self.idx
 
@@ -337,53 +384,64 @@ class TMTGNN(nn.Module):
 
         # Initialize skip connection accumulator and adjacency matrix
         skip = None
-        adj = None
+        learned_adj = None
 
         # Process through stacked spatio-temporal blocks
         for i in range(self.num_layers):
             # Store input for residual connection
             residual = x
 
-            # Apply temporal Transformer to enrich temporal representations,
-            # enabling better capture of long-range temporal dependencies
+            # Apply multi-mode Transformer to enrich representations.
             x = self.temporal_layers[i](x)
 
-            # Learn graph structure only in first layer from temporally-enriched features,
-            # ensuring nodes have seen full temporal history for structure inference
+            # Handle graph structure in first block only
             if i == 0:
-                # Extract temporal mean to get node-level representation,
-                # averaging over time to form static node embeddings
-                h = x.mean(dim=-1)
-                h = h.permute(0, 2, 1)
+                if self.graph_learning_enabled:
+                    # Extract temporal mean to get node-level representation,
+                    # averaging over time to form static node embeddings
+                    h = x.mean(dim=-1)
+                    h = h.permute(0, 2, 1)
 
-                # Add learnable node embeddings encoding node identity information,
-                # helping distinguish nodes and providing positional context
-                node_emb = self.node_emb_layer(node_idx)
-                node_emb = node_emb.unsqueeze(0).expand(h.size(0), -1, -1)
+                    # Add learnable node embeddings encoding node identity information,
+                    # helping distinguish nodes and providing positional context
+                    node_emb = self.node_emb_layer(node_idx)
+                    node_emb = node_emb.unsqueeze(0).expand(h.size(0), -1, -1)
 
-                # Combine temporal features with structural node embeddings
-                node_repr = h + node_emb
+                    # Combine temporal features with structural node embeddings
+                    node_repr = h + node_emb
 
-                # Apply EMA smoothing to stabilize graph structure across batches,
-                # preventing drastic changes in learned adjacency
-                node_repr_mean = node_repr.mean(dim=0)
-                if self.node_repr_prev is not None:
-                    node_repr_mean = (
-                        self.ema_alpha * node_repr_mean
-                        + (1 - self.ema_alpha) * self.node_repr_prev
+                    # Apply EMA smoothing to stabilize graph structure across batches,
+                    # preventing drastic changes in learned adjacency
+                    node_repr_mean = node_repr.mean(dim=0)
+                    if self.node_repr_prev is not None:
+                        node_repr_mean = (
+                            self.ema_alpha * node_repr_mean
+                            + (1 - self.ema_alpha) * self.node_repr_prev
+                        )
+
+                    self.node_repr_prev = node_repr_mean.detach()
+                    node_repr = node_repr + node_repr_mean.unsqueeze(0)
+
+                    # Learn sparse adaptive graph structure for each sample in batch,
+                    # enabling data-driven discovery of meaningful node relationships
+                    learned_adj = torch.stack(
+                        [self.graph_learner(nr) for nr in node_repr], dim=0
                     )
+                    active_adj = learned_adj
+                else:
+                    # Use predefined adjacency matrix
+                    active_adj = adj
 
-                self.node_repr_prev = node_repr_mean.detach()
-                node_repr = node_repr + node_repr_mean.unsqueeze(0)
+                    # Ensure proper shape: expand to batch dimension if needed
+                    if active_adj.dim() == 2:
+                        active_adj = active_adj.unsqueeze(0).expand(x.size(0), -1, -1)
+            else:
+                # Use adjacency from first block in subsequent blocks
+                active_adj = learned_adj if self.graph_learning_enabled else adj
 
-                # Learn sparse adaptive graph structure for each sample in batch,
-                # enabling data-driven discovery of meaningful node relationships
-                adj = torch.stack([self.graph_learner(nr) for nr in node_repr], dim=0)
-
-            # Apply bidirectional graph diffusion for spatial information propagation.
-            # Forward diffusion propagates along learned edges, backward on transposed edges
-            x = self.diffusion_forward[i](x, adj) + self.diffusion_backward[i](
-                x, adj.transpose(-1, -2)
+            # Apply bidirectional graph diffusion for spatial information propagation
+            x = self.diffusion_forward[i](x, active_adj) + self.diffusion_backward[i](
+                x, active_adj.transpose(-1, -2)
             )
 
             # Apply dropout for regularization and preventing over-fitting
@@ -399,7 +457,7 @@ class TMTGNN(nn.Module):
 
             # Apply node-aware normalization: scales and shifts per-node features
             # differently, enabling heterogeneous normalization that respects
-            # node-specific properties
+            # node-specific properties and characteristics
             x = self.normalization_layers[i](x, node_idx)
 
         # Project aggregated skip connections through output head
