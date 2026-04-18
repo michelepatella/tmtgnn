@@ -317,14 +317,21 @@ class TMTGNN(nn.Module):
         self,
         x: torch.Tensor,
         adj: torch.Tensor | None = None,
+        adj_base: torch.Tensor | None = None,
         idx: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Compute forward pass with flexible graph handling.
 
-        Supports two graph modes:
-        - Graph learning mode:
+        Supports three graph modes:
+        - Graph learning mode (with base graph):
+           - Starts with fixed base graph
+           - Learns cross-graph structure via GraphStructureLearner
+           - Combines both
+           - Requires adj_base parameter
+
+        - Graph learning mode (without base graph):
            - Learns adjacency matrix from temporally-enriched node representations
-           - Ignores adj input parameter (learns from data)
+           - Starts from scratch (no fixed structure)
            - First block only: graph learned once and reused
 
         - Predefined graph mode:
@@ -352,9 +359,13 @@ class TMTGNN(nn.Module):
                     - l: sequence length (temporal dimension)
             adj (torch.Tensor | None):
                 Predefined adjacency matrix of shape (n, n) or (b, n, n).
-                - Required if graph_learning_enabled=False
-                - Ignored if graph_learning_enabled=True
-                - Default: None (graph will be learned)
+                - Required if graph_learning_enabled=False (no adj_base)
+                - Ignored if graph_learning_enabled=True and adj_base provided
+                - Default: None
+            adj_base (torch.Tensor | None):
+                Base/fixed adjacency matrix for hybrid learning, shape (n, n) or (b, n, n).
+                - Used with graph_learning_enabled=True to combine fixed + learned edges
+                - Default: None (learn all edges from scratch)
             idx (torch.Tensor | None):
                 Optional node index tensor of shape (n,) for indexing node-specific
                 parameters in normalization layers. If None, uses registered buffer.
@@ -367,12 +378,12 @@ class TMTGNN(nn.Module):
 
         Raises:
             ValueError:
-                If graph_learning_enabled=False and adj is None.
+                If graph_learning_enabled=False and both adj and adj_base are None.
         """
         # Validate graph input when learning is disabled
-        if not self.graph_learning_enabled and adj is None:
+        if not self.graph_learning_enabled and adj is None and adj_base is None:
             raise ValueError(
-                "graph_learning_enabled=False requires adj to be provided as input."
+                "graph_learning_enabled=False requires either adj or adj_base to be provided."
             )
 
         # Use provided node indices or fall back to registered buffer
@@ -427,17 +438,40 @@ class TMTGNN(nn.Module):
                     learned_adj = torch.stack(
                         [self.graph_learner(nr) for nr in node_repr], dim=0
                     )
-                    active_adj = learned_adj
+
+                    # Combine base graph + learned edges
+                    if adj_base is not None:
+                        # Ensure base graph is in batch format
+                        base_adj = adj_base
+                        if base_adj.dim() == 2:
+                            base_adj = base_adj.unsqueeze(0).expand(x.size(0), -1, -1)
+                        
+                        # Combine fixed edges + learned edges, both contributing
+                        # to information flow (but learned edges are dynamic)
+                        active_adj = base_adj + learned_adj
+                    else:
+                        # Pure learning mode (only learned edges)
+                        active_adj = learned_adj
                 else:
                     # Use predefined adjacency matrix
-                    active_adj = adj
+                    active_adj = adj if adj is not None else adj_base
 
                     # Ensure proper shape: expand to batch dimension if needed
                     if active_adj.dim() == 2:
                         active_adj = active_adj.unsqueeze(0).expand(x.size(0), -1, -1)
             else:
                 # Use adjacency from first block in subsequent blocks
-                active_adj = learned_adj if self.graph_learning_enabled else adj
+                if self.graph_learning_enabled:
+                    # In subsequent layers, reuse the same combined graph
+                    if adj_base is not None:
+                        base_adj = adj_base
+                        if base_adj.dim() == 2:
+                            base_adj = base_adj.unsqueeze(0).expand(x.size(0), -1, -1)
+                        active_adj = base_adj + learned_adj
+                    else:
+                        active_adj = learned_adj
+                else:
+                    active_adj = adj if adj is not None else adj_base
 
             # Apply bidirectional graph diffusion for spatial information propagation
             x = self.diffusion_forward[i](x, active_adj) + self.diffusion_backward[i](
