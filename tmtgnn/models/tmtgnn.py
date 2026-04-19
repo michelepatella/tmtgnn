@@ -1,6 +1,6 @@
 """tmtgnn/models/tmtgnn.py
 
-T-MTGNN: Transformer-based Multivariate Temporal Graph Neural Network.
+T-MTGNN.
 
 Provides the `TMTGNN` class, a flexible spatio-temporal graph neural network
 combining multi-mode Transformer layers with graph diffusion and optional
@@ -23,7 +23,7 @@ from ..config import TransformerConfig
 
 
 class TMTGNN(nn.Module):
-    """T-MTGNN: Transformer-based Multivariate Temporal Graph Neural Network.
+    """T-MTGNN.
 
     Combines multi-mode Transformer-based representations with graph diffusion and
     optional adaptive graph learning, enabling diverse graph-structured forecasting.
@@ -445,7 +445,7 @@ class TMTGNN(nn.Module):
                         base_adj = adj_base
                         if base_adj.dim() == 2:
                             base_adj = base_adj.unsqueeze(0).expand(x.size(0), -1, -1)
-                        
+
                         # Combine fixed edges + learned edges, both contributing
                         # to information flow (but learned edges are dynamic)
                         active_adj = base_adj + learned_adj
