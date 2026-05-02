@@ -4,7 +4,7 @@ Transformer module.
 
 Provides the `Transformer` class, which enables multi-mode temporal/node-level
 self-attention for spatio-temporal graph neural networks. Supports:
-- Temporal attention: Along time dimension
+- Temporal attention: Along time dimension with causal masking
 - Node attention: Along node dimension
 """
 
@@ -17,7 +17,7 @@ class Transformer(nn.Module):
     """Flexible Transformer module for multi-mode self-attention.
 
     Applies multi-head self-attention with positional encoding, supporting:
-    1. Temporal mode: Self-attention over time dimension per node
+    1. Temporal mode: Self-attention over time dimension per node (with causal masking)
     2. Node mode: Self-attention over node dimension
     Enables rich temporal/node-level dependency modeling without convolutional
     inductive bias, applicable to diverse graph structures.
@@ -34,6 +34,10 @@ class Transformer(nn.Module):
             Stacked Transformer encoder layers for self-attention.
         mode (str):
             Active attention mode ("temporal" or "node").
+        max_sequence_length (int):
+            Maximum sequence length for positional encoding and causal mask.
+        causal_mask (torch.Tensor):
+            Precomputed causal mask for temporal mode to prevent attention to future tokens.
     """
 
     def __init__(
@@ -62,16 +66,17 @@ class Transformer(nn.Module):
             dropout (float):
                 Dropout rate applied inside Transformer layers for regularization.
             max_sequence_length (int):
-                Maximum sequence length for positional encoding.
+                Maximum sequence length for positional encoding and causal mask.
             mode (str):
                 Attention mode:
-                - "temporal": Self-attention over time dimension per node
+                - "temporal": Self-attention over time dimension per node (causal)
                 - "node": Self-attention over node dimension
         """
         super().__init__()
 
         self.out_channels = out_channels
         self.mode = mode
+        self.max_sequence_length = max_sequence_length
 
         # Create optional learnable projection to transform input channels
         # to output channels (if dimensions match, use identity to avoid
@@ -104,11 +109,36 @@ class Transformer(nn.Module):
             num_layers=num_layers,
         )
 
+        # Precompute causal mask for temporal mode to prevent attention to future positions
+        self._register_causal_mask(max_sequence_length)
+
+    def _register_causal_mask(self, seq_length: int) -> None:
+        """Precompute and register causal mask for temporal attention.
+
+        Creates a lower triangular mask that prevents attention to future positions.
+        The mask is registered as a buffer so it moves with the model and doesn't
+        participate in gradient computation.
+
+        Args:
+            seq_length (int):
+                Maximum sequence length for which to precompute the mask.
+        """
+        # Create lower triangular matrix: True where attention is allowed
+        # Position i can attend to positions 0...i (all positions <= i)
+        causal_mask = torch.tril(torch.ones(seq_length, seq_length)) == 1
+
+        # Convert to PyTorch's attention mask format: True where to mask (block attention)
+        # Invert so that True means "block this position"
+        causal_mask = ~causal_mask
+
+        # Register as buffer (moves with model, no gradients)
+        self.register_buffer("causal_mask", causal_mask)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Compute representation via multi-head self-attention.
 
         Applies Transformer encoder with explicitly configured attention mode:
-        - Temporal mode: Self-attention per node over time dimension
+        - Temporal mode: Self-attention per node over time dimension with causal masking
         - Node mode: Self-attention over node dimension
 
         Args:
@@ -142,12 +172,14 @@ class Transformer(nn.Module):
         num_nodes: int,
         seq_length: int,
     ) -> torch.Tensor:
-        """Forward pass with temporal mode: self-attention over time per node.
+        """Forward pass with temporal mode: self-attention over time per node (causal).
 
-        Classical multi-node temporal attention approach. Treats each node independently
-        and applies Transformer self-attention over the time dimension. Each node's
-        temporal sequence is processed separately, enabling the model to learn
-        node-specific temporal patterns without direct cross-node temporal interaction.
+        Classical multi-node temporal attention approach with causal masking. Treats each
+        node independently and applies Transformer self-attention over the time dimension
+        with causal masking to ensure each position can only attend to the past.
+        Each node's temporal sequence is processed separately, enabling the model to learn
+        node-specific temporal patterns without direct cross-node temporal interaction or
+        information leakage from future timesteps.
 
         Args:
             x (torch.Tensor):
@@ -183,8 +215,13 @@ class Transformer(nn.Module):
         # Add positional encoding for temporal positions
         x = self.positional_encoding(x)
 
-        # Apply Transformer over temporal dimension
-        x = self.transformer(x)
+        # Extract causal mask for current sequence length
+        # Mask shape: (seq_length, seq_length)
+        mask = self.causal_mask[:seq_length, :seq_length]
+
+        # Apply Transformer over temporal dimension with causal masking
+        # Causal mask ensures position t can only attend to positions 0...t
+        x = self.transformer(x, src_mask=mask)
 
         # Reshape back to (b, c_out, n, l)
         x = x.view(batch, num_nodes, seq_length, self.out_channels)
@@ -242,7 +279,7 @@ class Transformer(nn.Module):
         # Add positional encoding for node positions
         x = self.positional_encoding(x)
 
-        # Apply Transformer over node dimension
+        # Apply Transformer over node dimension (no causal mask needed for spatial)
         x = self.transformer(x)
 
         # Reshape back to (b, c_out, n, l)
