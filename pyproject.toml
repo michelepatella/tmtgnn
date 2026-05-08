@@ -1,17 +1,40 @@
+# Building -------------------------------------------------------------------------------------------------------------
 [build-system]
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# Project settings -----------------------------------------------------------------------------------------------------
 [project]
 name = "tmtgnn"
 version = "0.1.0"
-description = "T-MTGNN"
+description = "PyTorch implementation of a deep learning model combining Transformers and Graph Neural Networks for multivariate time series forecasting."
 readme = "README.md"
 requires-python = ">=3.13"
+license = { text = "MIT" }
 authors = [
     {name = "Michele Patella"}
 ]
-dependencies = ["torch==2.11.0"]
 
 [project.urls]
 Repository = "https://github.com/michelepatella/T-MTGNN.git"
+
+# Required dependencies ------------------------------------------------------------------------------------------------
+dependencies = ["torch==2.11.0"]
+
+# Optional dependencies ------------------------------------------------------------------------------------------------
+[project.optional-dependencies]
+dev = ["ruff==0.15.9"]
+
+# Tools settings -------------------------------------------------------------------------------------------------------
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["ALL"]
+extend-select = ["D"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
