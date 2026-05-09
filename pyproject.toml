@@ -15,15 +15,16 @@ authors = [
     {name = "Michele Patella"}
 ]
 
-[project.urls]
-Repository = "https://github.com/michelepatella/T-MTGNN.git"
-
 # Required dependencies ------------------------------------------------------------------------------------------------
 dependencies = ["torch==2.11.0"]
 
 # Optional dependencies ------------------------------------------------------------------------------------------------
 [project.optional-dependencies]
 dev = ["ruff==0.15.9"]
+
+# Other project settings -----------------------------------------------------------------------------------------------------
+[project.urls]
+Repository = "https://github.com/michelepatella/T-MTGNN.git"
 
 # Tools settings -------------------------------------------------------------------------------------------------------
 [tool.ruff]
