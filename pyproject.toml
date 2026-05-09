@@ -22,7 +22,7 @@ dependencies = ["torch==2.11.0"]
 [project.optional-dependencies]
 dev = ["ruff==0.15.9", "pre-commit==3.2.0"]
 
-# Other project settings -----------------------------------------------------------------------------------------------------
+# Other project settings -----------------------------------------------------------------------------------------------
 [project.urls]
 Repository = "https://github.com/michelepatella/T-MTGNN.git"
 
