@@ -219,9 +219,19 @@ class Transformer(nn.Module):
         # Mask shape: (seq_length, seq_length)
         mask = self.causal_mask[:seq_length, :seq_length]
 
-        # Apply Transformer over temporal dimension with causal masking
-        # Causal mask ensures position t can only attend to positions 0...t
-        x = self.transformer(x, src_mask=mask)
+        # Ensure mask is on correct device and has correct dtype 
+        # for attention computation
+        mask = mask.to(x.device).to(torch.bool)
+
+        # Apply Transformer over temporal dimension with causal masking 
+        # via layer-wise application. Causal mask ensures position t can
+        # only attend to positions 0...t.
+        for layer in self.transformer.layers:
+            x = layer(x, src_mask=mask)
+
+        # Apply final normalization if present
+        if self.transformer.norm is not None:
+            x = self.transformer.norm(x)
 
         # Reshape back to (b, c_out, n, l)
         x = x.view(batch, num_nodes, seq_length, self.out_channels)
