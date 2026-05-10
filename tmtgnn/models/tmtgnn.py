@@ -33,8 +33,6 @@ class TMTGNN(nn.Module):
             Number of stacked spatio-temporal blocks.
         dropout (float):
             Dropout rate applied to model layers for regularization.
-        num_forecast_steps (int):
-            Number of future time steps to predict (forecast horizon).
         graph_learning_enabled (bool):
             Whether to learn graph structure from data.
         node_repr_prev (torch.Tensor | None):
@@ -137,7 +135,6 @@ class TMTGNN(nn.Module):
 
         self.num_layers = tmtgnn_config.num_layers
         self.dropout = tmtgnn_config.dropout
-        self.num_forecast_steps = tmtgnn_config.num_forecast_steps
         self.graph_learning_enabled = graph_config.learning_enabled
 
         self.node_repr_prev = None
@@ -348,7 +345,7 @@ class TMTGNN(nn.Module):
             d. Accumulate skip connections for multi-layer aggregation
             e. Apply residual connections and node-aware normalization
         (3) Aggregate skip connections and project to output space
-        (4) Extract predictions for specified forecast horizon
+        (4) Extract next-step predictions
 
         Args:
             x (torch.Tensor):
@@ -372,9 +369,7 @@ class TMTGNN(nn.Module):
 
         Returns:
             torch.Tensor:
-                Output predictions of shape (b, c_out, n) for single-step forecast,
-                or (b, num_forecast_steps, n, c_out) for multi-horizon, with
-                dimensions squeezed if c_out == 1.
+                Output predictions of shape (b, c_out, n)
 
         Raises:
             ValueError:
@@ -499,17 +494,10 @@ class TMTGNN(nn.Module):
         x = F.relu(x)
         x = self.head_2(x)
 
-        # Extract predictions for specified forecast horizon
-        if self.num_forecast_steps == 1:
-            # Single-step forecast: take last time step and squeeze if needed
-            x = x[:, :, :, -1]
-            if x.size(1) == 1:
-                x = x[:, 0]
-        else:
-            # Multi-horizon forecast: extract last K time steps and reorder dimensions
-            x = x[:, :, :, -self.num_forecast_steps :]
-            x = x.permute(0, 3, 2, 1).contiguous()
-            if x.size(3) == 1:
-                x = x[:, :, :, 0]
+        # Single-step forecasting
+        x = x[:, :, :, -1]
+
+        if x.size(1) == 1:
+            x = x[:, 0]
 
         return x

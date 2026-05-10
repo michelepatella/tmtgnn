@@ -29,9 +29,6 @@ class TMTGNNConfig:
         dropout (float):
             Dropout rate applied to the model's layers.
             Default is 0.3.
-        num_forecast_steps (int):
-            Number of future time steps to predict.
-            Default is 1.
     """
 
     hidden_dim: int = 32
@@ -39,7 +36,6 @@ class TMTGNNConfig:
     head_dim: int = 128
     num_layers: int = 3
     dropout: float = 0.3
-    num_forecast_steps: int = 1
 
     def __post_init__(self) -> None:
         """Validates the configuration parameters after initialization.
@@ -56,9 +52,6 @@ class TMTGNNConfig:
             assert isinstance(self.head_dim, int), "head_dim must be int"
             assert isinstance(self.num_layers, int), "num_layers must be int"
             assert isinstance(self.dropout, float), "dropout must be float"
-            assert isinstance(self.num_forecast_steps, int), (
-                "num_forecast_steps must be int"
-            )
         except AssertionError as e:
             raise TypeError(f"Invalid TMTGNNConfig parameter: {e}")
 
@@ -70,6 +63,5 @@ class TMTGNNConfig:
             assert self.head_dim >= self.hidden_dim, "head_dim must be >= hidden_dim"
             assert self.num_layers > 0, "num_layers must be > 0"
             assert 0.0 <= self.dropout <= 1.0, "dropout must be in [0.0, 1.0]"
-            assert self.num_forecast_steps > 0, "num_forecast_steps must be > 0"
         except AssertionError as e:
             raise ValueError(f"Invalid TMTGNNConfig parameter: {e}")
