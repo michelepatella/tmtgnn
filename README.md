@@ -387,7 +387,7 @@ for epoch in range(num_epochs):
     for x, y_batch, adj in dataloader:
         # Move data to device
         x = x.to(device)
-        y = y.to(device)
+        y_batch = y_batch.to(device)
         adj = adj.to(device)
 
         optimizer.zero_grad()
