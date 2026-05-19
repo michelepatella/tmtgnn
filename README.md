@@ -238,6 +238,212 @@ pip install -e .
 
 ## Usage
 
+Define model parameters, including:
+| Parameter | Type | Default | Constraints | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **`num_nodes`** | `int` | *Required* | `> 0` | Total number of nodes in the graph. |
+| **`in_channels`** | `int` | *Required* | `> 0` | Number of input feature channels per node per timestep. |
+| **`seq_length`** | `int` | *Required* | `> 0` | Input temporal sequence length (timesteps). |
+| **`out_channels`** | `int` | *Required* | `> 0` | Number of output feature channels (prediction dimensionality). |
+| **`device`** | `torch.device` | *Required* | Must be `torch.device` | Computation device for model parameters and buffers. |
+| **`diffusion_config`** | `DiffusionConfig`  | `None` | - | Configuration object for graph diffusion layers. |
+| **`graph_config`** | `GraphConfig` | `None` | - | Configuration object for graph structure learning. |
+| **`norm_config`** | `NormConfig` | `None` | - | Configuration object for normalization layers. |
+| **`tmtgnn_config`** | `TMTGNNConfig` | `None` | - | Configuration object for hyper-parameters specific to the TMTGNN architecture. |
+| **`transformer_config`**| `TransformerConfig` | `None` | - | Configuration object for the internal Transformer temporal modeling. |
+
+Specifically, model configurations include:
+| Configuration | Parameter | Type | Default | Constraints | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **DiffusionConfig** | `diffusion_steps` | `int` | `2` | `> 0` | Number of diffusion steps in graph diffusion layers. |
+| | `residual_alpha` | `float` | `0.05` | `[0.0, 1.0]` | Residual propagation coefficient. |
+| | `projection_bias` | `bool` | `True` | - | Whether the projection layers inside graph diffusion use bias terms. |
+| **GraphConfig** | `learning_enabled` | `bool` | `True` | - | Whether to learn graph structure adaptively from data. |
+| | `top_k` | `int` | `20` | `> 0`<br>➔ `top_k < num_nodes` (if `learning_enabled=True`) | Number of outgoing edges per node in learned graph. |
+| | `sigmoid_alpha` | `float` | `3.0` | `> 0.0` | Scaling factor for sigmoid non-linearity sharpness. |
+| | `noise_scale` | `float` | `0.01` | `>= 0.0` | Noise scale used during adjacency construction. |
+| | `ema_alpha` | `float` | `0.8` | `[0.0, 1.0]` | Exponential moving average factor. |
+| **NormConfig** | `eps` | `float` | `1e-5` | `(0.0, 1.0)` | Numerical stability epsilon used in the normalization layer. |
+| | `elementwise_affine` | `bool` | `True` | - | Whether the normalization layer uses learnable affine parameters. |
+| **TMTGNNConfig** | `hidden_dim` | `int` | `32` | `> 0`<br>➔ `hidden_dim >= num_heads`<br>➔ `hidden_dim % num_heads == 0` | Hidden feature dimension used throughout the model. |
+| | `skip_dim` | `int` | `64` | `>= hidden_dim` | Skip connection feature dimension used for multi-layer aggregation. |
+| | `head_dim` | `int` | `128` | `>= hidden_dim` | Head dimension before output projection in the final layers. |
+| | `num_layers` | `int` | `3` | `> 0` | Number of spatio-temporal blocks in the model. |
+| | `dropout` | `float` | `0.3` | `[0.0, 1.0]` | Dropout rate applied to the model's layers. |
+| **TransformerConfig** | `mode` | `str` | `"temporal"` | `"temporal"`, `"node"` | Attention mode for self-attention (over time dimension per node or over node dimension). |
+| | `num_heads` | `int` | `4` | `> 0` | Number of attention heads used in Transformer layers. |
+| | `num_layers` | `int` | `2` | `> 0` | Number of internal layers inside each Transformer block. |
+| | `dropout` | `float` | `0.3` | `[0.0, 1.0]` | Dropout rate used in Transformer layers. |
+| | `max_sequence_length`| `int` | `5000` | `> 0` | Maximum sequence length for positional encoding. |
+
+For example:
+```python
+from tmtgnn.config import (
+    DiffusionConfig,
+    GraphConfig,
+    NormConfig,
+    TMTGNNConfig,
+    TransformerConfig,
+)
+from tmtgnn import TMTGNN
+
+
+# Define required model parameters
+num_nodes = 50
+in_channels = 5
+seq_length = 100
+out_channels = 1
+device = "cpu"
+
+# Define optional model parameters
+tmtgnn_config = TMTGNNConfig(
+    hidden_dim=32,
+    num_layers=3,
+    skip_dim=64,
+    head_dim=32,
+    dropout=0.3,
+)
+
+transformer_config = TransformerConfig(
+    num_heads=4,
+    num_layers=2,
+    dropout=0.3,
+    max_sequence_length=100,
+    mode="temporal",
+)
+
+graph_config = GraphConfig(
+    learning_enabled=True,
+    top_k=10,
+    ema_alpha=0.99,
+    sigmoid_alpha=1.0,
+    noise_scale=0.01,
+)
+
+diffusion_config = DiffusionConfig(
+    diffusion_steps=3,
+    residual_alpha=0.5,
+    projection_bias=True,
+)
+
+norm_config = NormConfig(
+    eps=1e-5,
+    elementwise_affine=True,
+)
+
+# Define T-MTGNN model
+model = TMTGNN(
+    num_nodes=num_nodes,
+    in_channels=in_channels,
+    seq_length=seq_length,
+    out_channels=out_channels,
+    device=device,
+    diffusion_config=diffusion_config,
+    graph_config=graph_config,
+    norm_config=norm_config,
+    tmtgnn_config=tmtgnn_config,
+    transformer_config=transformer_config,
+)
+```
+
+After having defined the model, train it. For example:
+```python
+import torch
+from torch import nn
+
+
+# Define hyperparameters
+lr = 1e-3
+num_epochs = 50
+batch_size = 512
+
+# Move model to device
+model.to(device)
+
+# Set model to training mode
+model.train()
+
+# Define optimizer and criterion for training
+optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+criterion = nn.MSELoss()
+
+# Define 10k samples of dummy data
+X = torch.randn(10000, in_channels, num_nodes, seq_length)
+y = torch.randn(10000, num_nodes)
+A = torch.randn(num_nodes, num_nodes)
+
+# Create dataset and dataloader
+dataset = torch.utils.data.TensorDataset(X, y, A)
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
+
+# Training loop
+for epoch in range(num_epochs):
+    # Single-epoch training
+    for x, y_batch, adj in dataloader:
+        # Move data to device
+        x = x.to(device)
+        y = y.to(device)
+        adj = adj.to(device)
+
+        optimizer.zero_grad()
+    
+        # Forward pass
+        y_pred = model(x, adj=adj)
+    
+        # Calculate loss
+        loss = criterion(y_pred, y_batch)
+    
+        # Backward pass
+        loss.backward()
+        optimizer.step()
+```
+
+Finally, evaluate your model. For example:
+```python
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+
+# Set model to evaluation mode
+model.eval()
+
+# Define 10k samples of dummy data
+X = torch.randn(10000, in_channels, num_nodes, seq_length)
+y = torch.randn(10000, num_nodes)
+A = torch.randn(num_nodes, num_nodes)
+
+# Create dataset and dataloader
+dataset = torch.utils.data.TensorDataset(X, y, A)
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
+
+all_preds = []
+all_targets = []
+
+with torch.no_grad():
+    for x, y_batch, adj in dataloader:
+        # Move data to device
+        x = x.to(device)
+        y_batch = y_batch.to(device)
+        adj = adj.to(device)
+
+        # Forward pass
+        y_pred = model(x, adj=adj)
+
+        all_preds.append(y_pred.cpu())
+        all_targets.append(y_batch.cpu())
+
+# Concatenate results
+y_pred = torch.cat(all_preds, dim=0).numpy()
+y_true = torch.cat(all_targets, dim=0).numpy()
+
+# Compute metrics
+mae = mean_absolute_error(y_true, y_pred)
+rmse = mean_squared_error(y_true, y_pred, squared=False)
+
+# Display metrics
+print(f"MAE: {mae:.4f}")
+print(f"RMSE: {rmse:.4f}")
+```
+
 <p align="right"><a href="#readme-top">Top ↑</a></p>
 
 ## License
