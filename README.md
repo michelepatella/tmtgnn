@@ -405,7 +405,7 @@ for epoch in range(num_epochs):
 
 Finally, evaluate your model. For example:
 ```python
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error
 
 
 # Set model to evaluation mode
@@ -442,7 +442,7 @@ y_true = torch.cat(all_targets, dim=0).numpy()
 
 # Compute metrics
 mae = mean_absolute_error(y_true, y_pred)
-rmse = mean_squared_error(y_true, y_pred, squared=False)
+rmse = root_mean_squared_error(y_true, y_pred)
 
 # Display metrics
 print(f"MAE: {mae:.4f}")
