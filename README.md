@@ -7,6 +7,11 @@
     PyTorch implementation of a deep learning model combining <br>
     Transformers and Graph Neural Networks for multivariate time series forecasting.
   </p>
+  <p align="center">
+    <a href="https://github.com/michelepatella/crypto-closing-price-forecasting">
+      <img src="https://img.shields.io/badge/GitHub-Demo-black?style=for-the-badge&logo=github" />
+    </a>
+  </p>
 </div>
 
 <br/>
