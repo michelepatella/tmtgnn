@@ -66,6 +66,74 @@ temporal modeling, graph diffusion mechanisms, and an optional adaptive graph st
 
 ### Architecture
 
+```python
+Input Tensor
+(batch_size, in_channels, num_nodes, seq_length)
+  ↓
+┌────────────────────┐
+│  Input Projection  │
+│  (1×1 Convolution) │
+└────────────────────┘
+  ↓
+┌────────────────────────────────────────┐
+│          Spatio-Temporal Block         │ × L
+├────────────────────────────────────────┤
+│     ┌───────────────────┐              │
+│     │  Temporal Module  │              │
+│     │   (Transformer)   │              │
+│     └───────────────────┘              │
+│               ↓                        │
+│     ┌───────────────────┐              │
+│     │   Spatial Module  │              │
+│     │ (Graph Diffusion) │              │
+│     └───────────────────┘              │
+│               ↓                        │
+│     ┌───────────────────┐              │
+│     │      Dropout      │              │
+│     └───────────────────┘              │
+│               ↓                        │
+│     ┌───────────────────┐              │
+│     │   Normalization   │              │
+│     └───────────────────┘              │
+│       │                                │
+│       ├─────────────────────┐          │
+│       │                     │          │
+│       ↓                     ↓          │
+│ ┌──────────────┐ ┌───────────────────┐ │
+│ │   Residual   │ │  Skip Connection  │ │
+│ │  Connection  │ │ (1×1 Convolution) │ │
+│ └──────────────┘ └───────────────────┘ │
+└────────────────────────────────────────┘
+  ↓
+┌────────────────────┐
+│  Skip Aggregation  │
+└────────────────────┘
+  ↓
+┌─────────────────────────┐
+│       Output Head       │
+├─────────────────────────┤
+│  ┌───────────────────┐  │
+│  │    Head Conv 1    │  │
+│  │ (1×1 Convolution) │  │
+│  └───────────────────┘  │
+│            ↓            │
+│  ┌───────────────────┐  │
+│  │       ReLU        │  │
+│  └───────────────────┘  │
+│            ↓            │
+│  ┌───────────────────┐  │
+│  │    Head Conv 2    │  │
+│  │ (1×1 Convolution) │  │
+│  └───────────────────┘  │
+└─────────────────────────┘
+  ↓
+Output Tensor
+if out_channels > 1:
+  (batch_size, out_channels, num_nodes)
+else:
+  (batch_size, num_nodes)
+```
+
 #### Input Projection
 
 A 1×1 convolution that projects input features into a shared latent space, ensuring uniform dimensionality across subsequent modules.
